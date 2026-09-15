@@ -1,0 +1,1239 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rondines de Seguridad · Panel de Supervisión</title>
+<!-- Sin dependencias externas: funciona sin conexión a internet. Importa los archivos JSON que cada
+     guardia exporta desde la app de rondines en su teléfono. -->
+<style>
+
+
+
+
+:root{
+  --bg:#10141b;
+  --bg-grad:#0c0f14;
+  --panel:#1a212c;
+  --panel-alt:#212a37;
+  --border:#2c3444;
+  --border-soft:#232b38;
+  --text:#e8ecf1;
+  --muted:#8b95a6;
+  --muted-dim:#5f6878;
+  --accent:#4f8fd6;
+  --accent-soft:rgba(79,143,214,.14);
+  --verde:#3fb950;
+  --verde-soft:rgba(63,185,80,.14);
+  --amarillo:#e3b341;
+  --amarillo-soft:rgba(227,179,65,.14);
+  --naranja:#e08a4b;
+  --naranja-soft:rgba(224,138,75,.16);
+  --rojo:#f0554a;
+  --rojo-soft:rgba(240,85,74,.15);
+  --radius:10px;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background:radial-gradient(1200px 600px at 10% -10%, #17202c 0%, var(--bg) 45%) fixed, var(--bg);
+  color:var(--text);
+  font-family:'Inter',system-ui,sans-serif;
+  font-size:14px;
+  line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1360px;margin:0 auto;padding:22px 22px 60px;}
+
+header.top{
+  display:flex;justify-content:space-between;align-items:flex-end;gap:20px;
+  padding-bottom:18px;margin-bottom:18px;border-bottom:1px solid var(--border-soft);
+  flex-wrap:wrap;
+}
+.brand{display:flex;align-items:center;gap:12px;}
+.brand-mark{
+  width:38px;height:38px;border-radius:8px;flex:none;
+  background:linear-gradient(160deg, var(--accent), #2c5c8f);
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 0 0 1px rgba(255,255,255,.06) inset;
+}
+.brand-mark svg{width:20px;height:20px;}
+h1{
+  font-family:'Barlow Condensed',sans-serif;font-weight:700;
+  font-size:26px;letter-spacing:.2px;margin:0;line-height:1.1;
+}
+.brand-sub{color:var(--muted);font-size:12.5px;margin-top:2px;}
+.top-right{text-align:right;color:var(--muted);font-size:12.5px;}
+.top-right .clock{font-family:'IBM Plex Mono',monospace;color:var(--text);font-size:13px;}
+
+.filters{
+  display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;
+  background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);
+  padding:14px 16px;margin-bottom:18px;
+}
+.field{display:flex;flex-direction:column;gap:5px;min-width:150px;}
+.field label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;}
+select,input[type=text]{
+  background:var(--panel-alt);border:1px solid var(--border);color:var(--text);
+  padding:8px 10px;border-radius:7px;font-size:13.5px;font-family:inherit;
+  outline:none;
+}
+select:focus,input:focus{border-color:var(--accent);}
+.field.week-range{flex-direction:row;align-items:flex-end;gap:8px;}
+.field.week-range .inner{display:flex;flex-direction:column;gap:5px;}
+input[type=number]{
+  width:64px;background:var(--panel-alt);border:1px solid var(--border);color:var(--text);
+  padding:8px 8px;border-radius:7px;font-family:'IBM Plex Mono',monospace;font-size:13px;
+}
+.btn-reset{
+  margin-left:auto;background:transparent;border:1px solid var(--border);color:var(--muted);
+  padding:9px 14px;border-radius:7px;cursor:pointer;font-size:13px;font-family:inherit;
+  transition:border-color .15s, color .15s;
+}
+.btn-reset:hover{border-color:var(--accent);color:var(--text);}
+
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px;}
+.kpi{
+  background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);
+  padding:14px 16px;position:relative;overflow:hidden;
+}
+.kpi .label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;}
+.kpi .value{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:30px;line-height:1;}
+.kpi .sub{font-size:11.5px;color:var(--muted-dim);margin-top:6px;font-family:'IBM Plex Mono',monospace;}
+.kpi.semaforo .value{display:flex;align-items:center;gap:9px;font-size:22px;}
+.dot{width:13px;height:13px;border-radius:50%;flex:none;box-shadow:0 0 10px 1px currentColor;}
+.dot.VERDE{background:var(--verde);color:var(--verde);}
+.dot.AMARILLO{background:var(--amarillo);color:var(--amarillo);}
+.dot.ROJO{background:var(--rojo);color:var(--rojo);}
+.kpi-accentbar{position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent);}
+
+.grid2{display:grid;grid-template-columns:1.55fr 1fr;gap:14px;margin-bottom:14px;}
+.panel{
+  background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);
+  padding:16px 18px 12px;
+}
+.panel h2{
+  font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:18px;margin:0 0 2px;
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+}
+.panel .desc{color:var(--muted);font-size:12px;margin-bottom:12px;}
+.chart-box{position:relative;height:260px;}
+.chart-box.tall{height:320px;}
+.chart-box.short{height:210px;}
+.chart-box.xtall{height:560px;}
+
+.wow-pill{
+  font-family:'IBM Plex Mono',monospace;font-size:12px;padding:4px 9px;border-radius:20px;
+  border:1px solid var(--border);white-space:nowrap;
+}
+.wow-pill.up{color:var(--rojo);border-color:rgba(240,85,74,.4);background:var(--rojo-soft);}
+.wow-pill.down{color:var(--verde);border-color:rgba(63,185,80,.4);background:var(--verde-soft);}
+.wow-pill.flat{color:var(--muted);}
+
+.section-title{
+  display:flex;align-items:baseline;justify-content:space-between;gap:12px;
+  margin:26px 0 12px;
+}
+.section-title h2{font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:20px;margin:0;}
+.section-title .desc{color:var(--muted);font-size:12.5px;}
+.card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;}
+.card-grid-scroll{overflow-y:auto;max-height:250px;transition:max-height .28s ease;border-radius:var(--radius);}
+.card-grid-scroll.expanded{max-height:none;overflow-y:visible;}
+.card-grid-toggle{display:flex;justify-content:center;margin:10px 0 4px;}
+.card-grid-toggle button{
+  background:var(--panel);border:1px solid var(--border-soft);color:var(--accent);
+  font-size:12px;font-weight:500;padding:6px 16px;border-radius:8px;cursor:pointer;
+}
+.card-grid-toggle button:hover{border-color:var(--accent);background:var(--panel-alt);}
+.chart-box-scroll{overflow-y:auto;max-height:260px;transition:max-height .28s ease;border-radius:var(--radius);}
+.chart-box-scroll.expanded{max-height:none;overflow-y:visible;}
+.chart-box-scroll .chart-box{height:260px;}
+.scard{
+  background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);
+  padding:14px 15px;border-left:4px solid var(--border);position:relative;
+}
+.scard.VERDE{border-left-color:var(--verde);}
+.scard.AMARILLO{border-left-color:var(--amarillo);}
+.scard.ROJO{border-left-color:var(--rojo);}
+.scard .name{font-weight:600;font-size:14.5px;margin-bottom:9px;padding-right:50px;}
+.scard .tag{
+  position:absolute;top:14px;right:14px;font-size:10px;font-weight:600;letter-spacing:.04em;
+  padding:3px 7px;border-radius:5px;
+}
+.scard .tag.VERDE{color:var(--verde);background:var(--verde-soft);}
+.scard .tag.AMARILLO{color:var(--amarillo);background:var(--amarillo-soft);}
+.scard .tag.ROJO{color:var(--rojo);background:var(--rojo-soft);}
+.scard .row{display:flex;justify-content:space-between;font-size:12.5px;color:var(--muted);margin-top:5px;}
+.scard .row b{color:var(--text);font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:12.5px;}
+.scard .trend{margin-top:9px;font-size:11.5px;display:flex;align-items:center;gap:5px;}
+.scard .trend.up{color:var(--rojo);}
+.scard .trend.down{color:var(--verde);}
+.scard .trend.flat{color:var(--muted-dim);}
+
+.table-toolbar{display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap;}
+.table-toolbar input[type=text]{min-width:260px;}
+.table-count{color:var(--muted);font-size:12px;margin-left:auto;font-family:'IBM Plex Mono',monospace;}
+.tbl-scroll{max-height:480px;overflow:auto;border:1px solid var(--border);border-radius:8px;}
+table{width:100%;border-collapse:collapse;font-size:12.8px;}
+thead th{
+  position:sticky;top:0;background:var(--panel-alt);text-align:left;padding:9px 10px;
+  font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;
+  border-bottom:1px solid var(--border);z-index:1;
+}
+tbody td{padding:8px 10px;border-bottom:1px solid var(--border-soft);vertical-align:top;}
+tbody tr:hover{background:var(--panel-alt);}
+td.mono{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--muted);white-space:nowrap;}
+td.desc-cell{max-width:300px;color:var(--muted);cursor:pointer;}
+td.desc-cell .short{display:block;}
+td.desc-cell.expanded .short{white-space:normal;}
+td.desc-cell:not(.expanded) .short{
+  display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.status-pill{font-size:11px;padding:2px 8px;border-radius:12px;white-space:nowrap;font-weight:600;}
+.status-pill.BAJO{color:var(--verde);background:var(--verde-soft);}
+.status-pill.MEDIO{color:var(--amarillo);background:var(--amarillo-soft);}
+.status-pill.ALTO{color:var(--naranja);background:var(--naranja-soft);}
+.status-pill.CRÍTICO{color:var(--rojo);background:var(--rojo-soft);}
+.status-pill.ACTIVO{color:var(--verde);background:var(--verde-soft);}
+.status-pill.BAJA{color:var(--muted);background:rgba(139,149,166,.14);}
+.status-pill.VERDE{color:var(--verde);background:var(--verde-soft);}
+.status-pill.AMARILLO{color:var(--amarillo);background:var(--amarillo-soft);}
+.status-pill.ROJO{color:var(--rojo);background:var(--rojo-soft);}
+.eval-preview{grid-column:1/-1;display:flex;align-items:center;gap:14px;flex-wrap:wrap;background:var(--panel-alt);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-top:2px;}
+.eval-preview .val{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:22px;}
+.eval-preview .rec{color:var(--muted);font-size:12.5px;flex:1;min-width:200px;}
+.nivel-dot{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:6px;}
+.medal{font-size:13px;margin-right:4px;}
+
+/* ---------- Roster (altas / bajas) ---------- */
+.roster-forms{display:grid;grid-template-columns:1fr 1fr;gap:0 22px;padding:16px 18px 6px;}
+.roster-forms .add-form{grid-template-columns:repeat(2,1fr);padding:0;border-left:1px solid var(--border-soft);}
+.roster-forms > div:first-child .add-form{border-left:none;padding-right:14px;}
+.roster-forms > div:last-child .add-form{padding-left:14px;}
+.roster-forms h3{
+  font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:15.5px;margin:0 0 10px;
+  color:var(--text);display:flex;align-items:center;gap:7px;
+}
+.roster-forms h3 .tag-mini{font-size:10px;font-weight:600;padding:2px 7px;border-radius:5px;letter-spacing:.03em;}
+.roster-forms h3 .tag-mini.alta{color:var(--verde);background:var(--verde-soft);}
+.roster-forms h3 .tag-mini.baja{color:var(--rojo);background:var(--rojo-soft);}
+.roster-table-wrap{padding:14px 18px 18px;}
+@media (max-width:900px){
+  .roster-forms{grid-template-columns:1fr;}
+  .roster-forms .add-form{border-left:none !important;padding:0 !important;}
+}
+
+/* ---------- Disciplina (llamadas de atención) ---------- */
+.tag-mini{font-size:10px;font-weight:600;padding:2px 7px;border-radius:5px;letter-spacing:.03em;white-space:nowrap;}
+.tag-mini.leve{color:var(--verde);background:var(--verde-soft);}
+.tag-mini.moderada{color:var(--amarillo);background:var(--amarillo-soft);}
+.tag-mini.grave{color:var(--rojo);background:var(--rojo-soft);}
+.disc-flag{
+  display:inline-flex;align-items:center;gap:3px;font-size:10.5px;font-weight:600;
+  color:var(--rojo);background:var(--rojo-soft);border:1px solid rgba(240,85,74,.35);
+  padding:1px 7px;border-radius:10px;margin-left:6px;white-space:nowrap;vertical-align:middle;
+}
+
+footer.note{
+  margin-top:26px;padding-top:16px;border-top:1px solid var(--border-soft);
+  color:var(--muted-dim);font-size:11.5px;line-height:1.7;
+}
+footer.note b{color:var(--muted);}
+
+@media (max-width:980px){
+  .kpis{grid-template-columns:repeat(2,1fr);}
+  .grid2{grid-template-columns:1fr;}
+}
+
+.add-panel{
+  background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);
+  margin-bottom:18px;overflow:hidden;
+}
+.add-panel-head{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:14px 18px;cursor:pointer;user-select:none;
+}
+.add-panel-head h2{
+  font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:18px;margin:0;
+  display:flex;align-items:center;gap:10px;
+}
+.add-panel-head .badge-new{
+  font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--accent);
+  background:var(--accent-soft);border:1px solid rgba(79,143,214,.35);
+  padding:2px 8px;border-radius:20px;
+}
+.add-panel-head .chev{color:var(--muted);transition:transform .18s;font-size:13px;}
+.add-panel.open .chev{transform:rotate(180deg);}
+.add-panel-head .hint{color:var(--muted);font-size:12px;font-weight:400;}
+.add-panel-body{
+  max-height:0;overflow:hidden;transition:max-height .22s ease;
+  border-top:1px solid var(--border-soft);
+}
+.add-panel.open .add-panel-body{max-height:4200px;}
+.add-form{padding:16px 18px 18px;display:grid;grid-template-columns:repeat(4,1fr);gap:12px 14px;}
+.add-form .f-full{grid-column:1 / -1;}
+.add-form .f-half{grid-column:span 2;}
+.add-form label{display:block;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;}
+.add-form input[list],
+.add-form input[type=text],
+.add-form input[type=number],
+.add-form input[type=date],
+.add-form select,
+.add-form textarea{
+  width:100%;background:var(--panel-alt);border:1px solid var(--border);color:var(--text);
+  padding:9px 10px;border-radius:7px;font-size:13.5px;font-family:inherit;outline:none;
+}
+.add-form input:focus,.add-form select:focus,.add-form textarea:focus{border-color:var(--accent);}
+.add-form textarea{resize:vertical;min-height:56px;line-height:1.4;}
+.add-form .req::after{content:' *';color:var(--rojo);}
+.add-form .actions{grid-column:1 / -1;display:flex;align-items:center;gap:10px;margin-top:2px;flex-wrap:wrap;}
+.section-sub{
+  grid-column:1/-1;font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:14px;
+  color:var(--accent);border-top:1px dashed var(--border-soft);padding-top:12px;margin-top:2px;
+  text-transform:uppercase;letter-spacing:.04em;
+}
+.section-sub:first-of-type{border-top:none;padding-top:0;margin-top:0;}
+.btn-primary{
+  background:linear-gradient(160deg, var(--accent), #2c5c8f);color:#fff;border:none;
+  padding:10px 18px;border-radius:7px;cursor:pointer;font-size:13.5px;font-weight:600;font-family:inherit;
+}
+.btn-primary:hover{filter:brightness(1.08);}
+.btn-secondary{
+  background:transparent;border:1px solid var(--border);color:var(--muted);
+  padding:10px 14px;border-radius:7px;cursor:pointer;font-size:13px;font-family:inherit;
+}
+.btn-secondary:hover{border-color:var(--accent);color:var(--text);}
+.btn-danger-outline{
+  background:transparent;border:1px solid rgba(240,85,74,.4);color:var(--rojo);
+  padding:10px 14px;border-radius:7px;cursor:pointer;font-size:13px;font-family:inherit;
+}
+.btn-danger-outline:hover{background:var(--rojo-soft);}
+.form-msg{font-size:12.5px;padding:8px 12px;border-radius:7px;margin-top:2px;display:none;}
+.form-msg.ok{display:block;color:var(--verde);background:var(--verde-soft);border:1px solid rgba(63,185,80,.35);}
+.form-msg.err{display:block;color:var(--rojo);background:var(--rojo-soft);border:1px solid rgba(240,85,74,.35);}
+.storage-note{grid-column:1/-1;color:var(--muted-dim);font-size:11.5px;line-height:1.6;border-top:1px dashed var(--border-soft);padding-top:10px;margin-top:2px;}
+.own-row{background:rgba(79,143,214,.06);}
+.del-btn{
+  background:transparent;border:1px solid var(--border);color:var(--muted);
+  padding:2px 8px;border-radius:6px;cursor:pointer;font-size:11px;font-family:inherit;
+}
+.del-btn:hover{border-color:var(--rojo);color:var(--rojo);}
+.edit-btn{
+  background:transparent;border:1px solid var(--border);color:var(--muted);
+  padding:2px 8px;border-radius:6px;cursor:pointer;font-size:11px;font-family:inherit;margin-right:4px;
+}
+.edit-btn:hover{border-color:var(--accent);color:var(--text);}
+.row-actions{display:flex;gap:4px;white-space:nowrap;}
+.edited-row{background:rgba(227,179,65,.08);}
+.edited-tag{font-size:10px;color:var(--amarillo);border:1px solid rgba(227,179,65,.4);border-radius:5px;padding:0 5px;margin-left:6px;vertical-align:middle;}
+.modal-overlay{
+  display:none;position:fixed;inset:0;background:rgba(8,10,14,.65);z-index:50;
+  align-items:center;justify-content:center;padding:20px;
+}
+.modal-overlay.open{display:flex;}
+.modal-box{
+  background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);
+  max-width:760px;width:100%;max-height:90vh;overflow:auto;padding:20px 22px;
+}
+.modal-box h3{margin:0 0 4px;font-family:'Barlow Condensed',sans-serif;font-size:20px;}
+.modal-sub{color:var(--muted);font-size:12px;margin-bottom:14px;}
+.modal-box .add-form{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px 14px;padding:0;}
+
+
+
+
+/* ---- banner de alertas (nuevo) ---- */
+.alert-banner{
+  background:var(--rojo-soft);border:1px solid rgba(240,85,74,.4);border-radius:var(--radius);
+  padding:14px 18px;margin-bottom:20px;
+}
+.alert-banner h2{font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:18px;margin:0 0 4px;color:var(--rojo);display:flex;align-items:center;gap:8px;}
+.alert-banner .desc{color:var(--muted);font-size:12.5px;margin-bottom:10px;}
+.alert-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;}
+.alert-item{background:var(--panel);border:1px solid var(--border-soft);border-radius:9px;padding:10px 12px;}
+.alert-item .name{font-weight:600;font-size:13.5px;color:var(--text);}
+.alert-item .loc{color:var(--muted);font-size:11.5px;margin-bottom:6px;}
+.alert-item .accion{color:var(--muted);font-size:12px;line-height:1.4;}
+.alert-item .calif{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--rojo);font-weight:600;}
+.alert-banner.hidden{display:none;}
+
+
+
+.alert-banner{background:var(--rojo-soft);border:1px solid rgba(240,85,74,.4);border-radius:var(--radius);padding:14px 18px;margin-bottom:20px;}
+.alert-banner h2{font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:18px;margin:0 0 4px;color:var(--rojo);display:flex;align-items:center;gap:8px;}
+.alert-banner .desc{color:var(--muted);font-size:12.5px;}
+.mini-table{width:100%;border-collapse:collapse;font-size:13px;}
+.mini-table th{text-align:left;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em;padding:6px 8px;border-bottom:1px solid var(--border-soft);}
+.mini-table td{padding:9px 8px;border-bottom:1px solid var(--border-soft);}
+.mini-table .dot{margin-right:0;}
+
+
+
+.gps-badge{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:20px;font-size:12px;font-weight:600;}
+.route-canvas-box{position:relative;background:var(--panel);border:1px solid var(--border-soft);border-radius:var(--radius);height:320px;}
+.route-legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;font-size:11.5px;color:var(--muted);}
+.route-legend .dot-legend{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:middle;}
+.rondin-card{background:var(--panel);border:1px solid var(--border);border-left:4px solid var(--border);border-radius:var(--radius);padding:16px 18px;margin-bottom:12px;cursor:pointer;transition:border-color .15s;}
+.rondin-card:hover{border-color:var(--accent);}
+.rondin-card.VERDE{border-left-color:var(--verde);}
+.rondin-card.AMARILLO{border-left-color:var(--amarillo);}
+.rondin-card.ROJO{border-left-color:var(--rojo);}
+.rondin-card .rc-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;}
+.rondin-card .rc-title{font-weight:600;font-size:14.5px;}
+.rondin-card .rc-sub{font-size:12px;color:var(--muted);margin-top:3px;}
+.rondin-card .rc-stats{display:flex;gap:18px;margin-top:10px;flex-wrap:wrap;}
+.rondin-card .rc-stats div{font-size:11.5px;color:var(--muted);}
+.rondin-card .rc-stats b{display:block;font-family:'Barlow Condensed',sans-serif;font-size:18px;color:var(--text);font-weight:700;}
+.detail-thumb-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;margin-top:12px;}
+.detail-thumb-grid img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;border:1px solid var(--border-soft);cursor:pointer;}
+.detail-thumb-grid .thumb-label{font-size:10px;color:var(--muted);margin-top:4px;text-align:center;}
+.lightbox{position:fixed;inset:0;background:rgba(0,0,0,.85);display:none;align-items:center;justify-content:center;z-index:200;padding:20px;}
+.lightbox.open{display:flex;}
+.lightbox img{max-width:100%;max-height:90vh;border-radius:8px;}
+.lightbox .lb-close{position:absolute;top:20px;right:24px;color:#fff;font-size:28px;cursor:pointer;background:none;border:none;}
+.dropzone{border:2px dashed var(--border);border-radius:var(--radius);padding:28px;text-align:center;color:var(--muted);cursor:pointer;transition:border-color .15s,background .15s;}
+.dropzone:hover, .dropzone.dragover{border-color:var(--accent);background:var(--panel-alt);}
+
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 2L4 5v6c0 5.2 3.4 9.8 8 11 4.6-1.2 8-5.8 8-11V5l-8-3z" stroke="#dbe8f7" stroke-width="1.6" stroke-linejoin="round"/>
+          <path d="M9 12.2l2 2 4-4.4" stroke="#dbe8f7" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <div>
+        <h1>Rondines de Seguridad · Panel de Supervisión</h1>
+        <div class="brand-sub">Importe los rondines (JSON) exportados desde el teléfono de cada guardia para verlos todos juntos</div>
+      </div>
+    </div>
+    <div class="top-right">
+      <div>Rondines cargados: <span id="totalRondinesLabel" class="clock">—</span></div>
+      <div>Guardias distintos: <span id="totalGuardiasLabel" class="clock">—</span></div>
+    </div>
+  </header>
+
+  <div class="panel" style="margin-bottom:20px;">
+    <h2>📥 Importar rondines</h2>
+    <div class="desc">Seleccione uno o varios archivos .json exportados desde la app de rondines de cada guardia</div>
+    <label class="dropzone" id="dropzone" for="fileImportRondines">
+      <div style="font-size:28px;margin-bottom:8px;">⬆️</div>
+      Toque para elegir archivo(s) JSON, o arrástrelos aquí
+    </label>
+    <input type="file" id="fileImportRondines" accept="application/json" multiple style="display:none;">
+    <div class="form-msg" id="importMsg" style="margin-top:12px;"></div>
+  </div>
+
+  <div class="filters">
+    <div class="field">
+      <label for="fGuardia">Guardia</label>
+      <select id="fGuardia"><option value="TODOS">Todos los guardias</option></select>
+    </div>
+    <div class="field">
+      <label for="fArea">Área</label>
+      <select id="fArea"><option value="TODOS">Todas las áreas</option></select>
+    </div>
+    <div class="field">
+      <label for="fCumplimiento">Cumplimiento</label>
+      <select id="fCumplimiento">
+        <option value="TODOS">Todos</option>
+        <option value="COMPLETO">Completo (100%)</option>
+        <option value="PARCIAL">Parcial</option>
+        <option value="SIN_PUNTOS">Sin puntos de control</option>
+      </select>
+    </div>
+    <button class="btn-reset" id="btnReset">Restablecer filtros</button>
+  </div>
+
+  <div class="kpis" id="kpisRow"></div>
+
+  <div class="grid2">
+    <div class="panel">
+      <h2>Distancia y duración por guardia</h2>
+      <div class="desc">Promedio de los rondines en el filtro activo</div>
+      <div class="chart-box tall"><canvas id="chartGuardia"></canvas></div>
+    </div>
+    <div class="panel">
+      <h2>% Cumplimiento de puntos de control por guardia</h2>
+      <div class="desc">Promedio del filtro activo — sólo rondines con puntos de control definidos</div>
+      <div class="chart-box tall"><canvas id="chartCumplimiento"></canvas></div>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-top:22px;">
+    <h2>Comparativo semanal de recorridos por campo</h2>
+    <div class="desc">Número de rondines realizados por semana en cada área, dentro del filtro activo — una línea por campo</div>
+    <div class="chart-box tall"><canvas id="chartSemanalCampo"></canvas></div>
+  </div>
+
+  <div class="panel" style="margin-top:22px;">
+    <h2>Áreas recorridas y novedades encontradas por semana</h2>
+    <div class="desc">Barras = cuántas áreas distintas se recorrieron esa semana · línea = novedades encontradas esa semana</div>
+    <div class="chart-box tall"><canvas id="chartSemanalNovedades"></canvas></div>
+  </div>
+
+  <div class="panel" style="margin-top:22px;">
+    <h2>🔍 Novedades encontradas por guardia</h2>
+    <div class="desc">Indicador de efectividad del recorrido — un guardia que reporta 0 novedades puede reflejar una zona segura o una revisión poco atenta; compárelo con el % de cumplimiento de puntos para tener el panorama completo</div>
+    <div class="chart-box tall"><canvas id="chartNovedades"></canvas></div>
+  </div>
+
+  <div class="section-title" style="margin-top:22px;">
+    <h2>📋 Rondines</h2>
+    <div class="desc">Toque un rondín para ver el detalle: ruta, puntos y evidencia fotográfica</div>
+  </div>
+  <div id="rondinesList"></div>
+
+  <div class="modal-overlay" id="modalDetalle">
+    <div class="modal-box" style="max-width:640px;">
+      <h3 id="detTitulo">Rondín</h3>
+      <div class="modal-sub" id="detSub">—</div>
+      <div class="kpis" id="detKpis" style="margin-bottom:16px;"></div>
+      <div class="route-canvas-box"><canvas id="detRouteCanvas"></canvas></div>
+      <div class="route-legend">
+        <span><span class="dot-legend" style="background:#4f8fd6;"></span>Inicio</span>
+        <span><span class="dot-legend" style="background:#f0554a;"></span>Fin</span>
+        <span><span class="dot-legend" style="background:#3fb950;"></span>Puntos de control</span>
+        <span><span class="dot-legend" style="background:#e3b341;"></span>Paradas libres</span>
+        <span><span class="dot-legend" style="background:#e0459b;"></span>Novedades</span>
+      </div>
+      <div id="detThumbs" class="detail-thumb-grid"></div>
+      <div class="actions" style="margin-top:18px;">
+        <button type="button" class="btn-secondary" id="btnCerrarDetalle">Cerrar</button>
+        <button type="button" class="del-btn" id="btnEliminarRondin" style="padding:9px 16px;">Eliminar este rondín</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="lightbox" id="lightbox">
+    <button type="button" class="lb-close" id="lbClose">✕</button>
+    <img id="lbImg" src="">
+  </div>
+
+  <footer class="note">
+    <b>Cómo usar este panel.</b> Cada guardia exporta su rondín como archivo JSON desde la app de su
+    teléfono al finalizar (botón "Exportar rondín"). Reciba esos archivos (por WhatsApp, correo, USB, etc.)
+    y cárguelos aquí con el botón de arriba — puede seleccionar varios a la vez. Los rondines quedan
+    guardados en este navegador; si necesita compartir este panel con otra persona, tendrá que volver a
+    importar los mismos archivos ahí. El semáforo de cada tarjeta es verde si se completaron todos los
+    puntos de control, amarillo si se completó una parte, y rojo si no se marcó ninguno (o gris si el
+    rondín no tenía puntos de control definidos, solo paradas libres). Funciona 100% sin conexión a internet.
+  </footer>
+
+</div>
+<script>
+
+const COLORS = { VERDE:'#3fb950', AMARILLO:'#e3b341', ROJO:'#f0554a', NARANJA:'#e08a4b', accent:'#4f8fd6', muted:'#8b95a6', text:'#e8ecf1' };
+
+function roundRectPath(ctx,x,y,w,h,r){
+  r = Math.max(0, Math.min(r, h/2, w/2));
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.lineTo(x+w-r,y);
+  ctx.arcTo(x+w,y,x+w,y+r,r);
+  ctx.lineTo(x+w,y+h-r);
+  ctx.arcTo(x+w,y+h,x+w-r,y+h,r);
+  ctx.lineTo(x+r,y+h);
+  ctx.arcTo(x,y+h,x,y+h-r,r);
+  ctx.lineTo(x,y+r);
+  ctx.arcTo(x,y,x+r,y,r);
+  ctx.closePath();
+}
+
+function truncateLabel(ctx, text, maxWidth){
+  text = String(text);
+  if(ctx.measureText(text).width <= maxWidth) return text;
+  let t = text;
+  while(t.length>1 && ctx.measureText(t+'…').width > maxWidth){ t = t.slice(0,-1); }
+  return t+'…';
+}
+
+function setupCanvasHiDPI(canvas){
+  const parent = canvas.parentElement;
+  const cssW = Math.max(50, parent.clientWidth);
+  const cssH = Math.max(50, parent.clientHeight);
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.round(cssW*dpr);
+  canvas.height = Math.round(cssH*dpr);
+  canvas.style.width = cssW+'px';
+  canvas.style.height = cssH+'px';
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,cssW,cssH);
+  return {ctx, width:cssW, height:cssH};
+}
+
+function drawEmptyMsg(canvas, msg){
+  const {ctx,width,height} = setupCanvasHiDPI(canvas);
+  ctx.fillStyle = COLORS.muted;
+  ctx.font = '12.5px Inter, sans-serif';
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText(msg, width/2, height/2);
+}
+
+function drawHBarChart(canvas, {labels, values, colors, xTitle, valueFmt}){
+  if(!labels || !labels.length){ drawEmptyMsg(canvas,'Sin datos para el filtro seleccionado.'); return; }
+  const {ctx,width,height} = setupCanvasHiDPI(canvas);
+  valueFmt = valueFmt || (v=>String(v));
+  const maxVal = Math.max(1, ...values);
+  const padLeft = 150, padRight = 46, padTop = 6, padBottom = xTitle ? 22 : 6;
+  const chartW = Math.max(10, width - padLeft - padRight);
+  const chartH = Math.max(10, height - padTop - padBottom);
+  const n = labels.length;
+  const barGap = Math.max(3, Math.min(10, chartH/n*0.35));
+  const barH = Math.max(4, (chartH - barGap*(n-1)) / n);
+  const totalBarsH = barH*n + barGap*(n-1);
+  const startY = padTop + Math.max(0,(chartH-totalBarsH)/2);
+
+  ctx.strokeStyle = 'rgba(255,255,255,.06)';
+  ctx.lineWidth = 1;
+  ctx.fillStyle = COLORS.muted;
+  ctx.font = '10px "IBM Plex Mono", monospace';
+  ctx.textAlign = 'center'; ctx.textBaseline='top';
+  const divisions = 4;
+  for(let d=0; d<=divisions; d++){
+    const gx = padLeft + chartW*(d/divisions);
+    ctx.beginPath(); ctx.moveTo(gx, padTop); ctx.lineTo(gx, padTop+chartH); ctx.stroke();
+    const val = Math.round((maxVal*(d/divisions))*10)/10;
+    if(xTitle) ctx.fillText(String(val), gx, padTop+chartH+5);
+  }
+
+  labels.forEach((lab,i)=>{
+    const y = startY + i*(barH+barGap);
+    const val = values[i]||0;
+    const w = chartW * (val/maxVal);
+    ctx.fillStyle = (colors && colors[i]) || COLORS.accent;
+    roundRectPath(ctx, padLeft, y, Math.max(1.5,w), barH, 3);
+    ctx.fill();
+    ctx.fillStyle = '#c9d1de';
+    ctx.font = '11px Inter, sans-serif';
+    ctx.textAlign = 'right'; ctx.textBaseline='middle';
+    ctx.fillText(truncateLabel(ctx, lab, padLeft-12), padLeft-8, y+barH/2);
+    ctx.fillStyle = '#e8ecf1';
+    ctx.font = '10.5px "IBM Plex Mono", monospace';
+    ctx.textAlign='left'; ctx.textBaseline='middle';
+    ctx.fillText(valueFmt(val, i), padLeft + w + 6, y+barH/2);
+  });
+
+  if(xTitle){
+    ctx.fillStyle = COLORS.muted;
+    ctx.font = '10px Inter, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline='alphabetic';
+    ctx.fillText(xTitle, padLeft+chartW/2, height-2);
+  }
+}
+
+function drawComboChart(canvas, {labels, barValues, lineValues, barColors, lineColor, barLegend, lineLegend}){
+  if(!labels || !labels.length){ drawEmptyMsg(canvas,'Sin datos para el filtro seleccionado.'); return; }
+  const {ctx,width,height} = setupCanvasHiDPI(canvas);
+  const padLeft = 40, padRight = 40, padTop = 24, padBottom = 26;
+  const chartW = Math.max(10,width-padLeft-padRight);
+  const chartH = Math.max(10,height-padTop-padBottom);
+  const n = labels.length;
+  const maxBar = Math.max(1, ...barValues);
+  const maxLine = Math.max(1, ...lineValues);
+
+  ctx.strokeStyle = 'rgba(255,255,255,.05)';
+  ctx.lineWidth = 1;
+  ctx.font = '9.5px "IBM Plex Mono", monospace';
+  const divisions = 4;
+  for(let d=0; d<=divisions; d++){
+    const gy = padTop + chartH*(1-d/divisions);
+    ctx.beginPath(); ctx.moveTo(padLeft,gy); ctx.lineTo(padLeft+chartW,gy); ctx.stroke();
+    ctx.fillStyle = COLORS.muted;
+    ctx.textAlign='right'; ctx.textBaseline='middle';
+    ctx.fillText(String(Math.round(maxBar*(d/divisions))), padLeft-6, gy);
+    ctx.textAlign='left';
+    ctx.fillText(String(Math.round(maxLine*(d/divisions))), padLeft+chartW+6, gy);
+  }
+
+  const slot = chartW/n;
+  const barW = Math.max(2, Math.min(28, slot*0.5));
+  labels.forEach((lab,i)=>{
+    const cx = padLeft + slot*(i+0.5);
+    const val = barValues[i]||0;
+    const h = chartH * (val/maxBar);
+    const x = cx-barW/2, y = padTop+chartH-h;
+    ctx.fillStyle = (barColors && barColors[i]) || COLORS.accent;
+    roundRectPath(ctx, x, y, barW, Math.max(1,h), 2);
+    ctx.fill();
+  });
+
+  ctx.fillStyle = COLORS.muted;
+  ctx.font = '9.5px "IBM Plex Mono", monospace';
+  ctx.textAlign='center'; ctx.textBaseline='top';
+  const labelStep = Math.max(1, Math.ceil(n / Math.max(1, Math.floor(chartW/34))));
+  labels.forEach((lab,i)=>{
+    if(i%labelStep!==0 && i!==n-1) return;
+    const cx = padLeft + slot*(i+0.5);
+    ctx.fillText(lab, cx, padTop+chartH+6);
+  });
+
+  ctx.strokeStyle = lineColor || COLORS.AMARILLO;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  lineValues.forEach((v,i)=>{
+    const cx = padLeft + slot*(i+0.5);
+    const cy = padTop + chartH*(1-(v/maxLine));
+    if(i===0) ctx.moveTo(cx,cy); else ctx.lineTo(cx,cy);
+  });
+  ctx.stroke();
+  ctx.fillStyle = lineColor || COLORS.AMARILLO;
+  lineValues.forEach((v,i)=>{
+    const cx = padLeft + slot*(i+0.5);
+    const cy = padTop + chartH*(1-(v/maxLine));
+    ctx.beginPath(); ctx.arc(cx,cy,2.3,0,Math.PI*2); ctx.fill();
+  });
+
+  ctx.textAlign='left'; ctx.textBaseline='middle';
+  ctx.font='10.5px Inter, sans-serif';
+  let lx = padLeft;
+  const ly = 10;
+  ctx.fillStyle = COLORS.accent;
+  ctx.fillRect(lx,ly-4,10,8);
+  ctx.fillStyle = '#c9d1de';
+  ctx.fillText(barLegend||'', lx+14, ly);
+  lx += 14+ctx.measureText(barLegend||'').width+18;
+  ctx.strokeStyle = lineColor||COLORS.AMARILLO;
+  ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(lx,ly); ctx.lineTo(lx+16,ly); ctx.stroke();
+  ctx.fillStyle = '#c9d1de';
+  ctx.fillText(lineLegend||'', lx+20, ly);
+}
+
+function drawMultiLineChart(canvas, {labels, series, yTitle}){
+  if(!labels || !labels.length || !series || !series.length){ drawEmptyMsg(canvas,'Sin datos para el filtro seleccionado.'); return; }
+  const {ctx,width,height} = setupCanvasHiDPI(canvas);
+  const padLeft = 38, padRight = 16, padTop = 26, padBottom = 46;
+  const chartW = Math.max(10,width-padLeft-padRight);
+  const chartH = Math.max(10,height-padTop-padBottom);
+  const n = labels.length;
+  const allVals = series.flatMap(s=>s.values);
+  const maxVal = Math.max(1, ...allVals);
+
+  ctx.strokeStyle = 'rgba(255,255,255,.05)';
+  ctx.lineWidth = 1;
+  ctx.font = '9.5px "IBM Plex Mono", monospace';
+  const divisions = 4;
+  for(let d=0; d<=divisions; d++){
+    const gy = padTop + chartH*(1-d/divisions);
+    ctx.beginPath(); ctx.moveTo(padLeft,gy); ctx.lineTo(padLeft+chartW,gy); ctx.stroke();
+    ctx.fillStyle = COLORS.muted;
+    ctx.textAlign='right'; ctx.textBaseline='middle';
+    ctx.fillText(Math.round(maxVal*(d/divisions)).toString(), padLeft-6, gy);
+  }
+
+  const slot = n>1 ? chartW/(n-1) : 0;
+  ctx.fillStyle = COLORS.muted;
+  ctx.font = '9.5px "IBM Plex Mono", monospace';
+  ctx.textAlign='center'; ctx.textBaseline='top';
+  const labelStep = Math.max(1, Math.ceil(n / Math.max(1, Math.floor(chartW/40))));
+  labels.forEach((lab,i)=>{
+    if(i%labelStep!==0 && i!==n-1) return;
+    const cx = n>1 ? padLeft + slot*i : padLeft+chartW/2;
+    ctx.fillText(lab, cx, padTop+chartH+6);
+  });
+
+  series.forEach(s=>{
+    ctx.strokeStyle = s.color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    s.values.forEach((v,i)=>{
+      const cx = n>1 ? padLeft + slot*i : padLeft+chartW/2;
+      const cy = padTop + chartH*(1-(v/maxVal));
+      if(i===0) ctx.moveTo(cx,cy); else ctx.lineTo(cx,cy);
+    });
+    ctx.stroke();
+    ctx.fillStyle = s.color;
+    s.values.forEach((v,i)=>{
+      const cx = n>1 ? padLeft + slot*i : padLeft+chartW/2;
+      const cy = padTop + chartH*(1-(v/maxVal));
+      ctx.beginPath(); ctx.arc(cx,cy,2.6,0,Math.PI*2); ctx.fill();
+    });
+  });
+
+  // leyenda (puede pasar a varias líneas si hay muchas áreas)
+  ctx.textAlign='left'; ctx.textBaseline='middle';
+  ctx.font='10.5px Inter, sans-serif';
+  let lx = padLeft, ly = padTop+chartH+26;
+  series.forEach(s=>{
+    const labelW = ctx.measureText(s.name).width;
+    if(lx + 18 + labelW > padLeft+chartW){ lx = padLeft; ly += 18; }
+    ctx.fillStyle = s.color;
+    ctx.fillRect(lx, ly-4, 10, 8);
+    ctx.fillStyle = '#c9d1de';
+    ctx.fillText(s.name, lx+14, ly);
+    lx += 14 + labelW + 16;
+  });
+}
+
+function fmtDateTime(ts){
+  if(!ts) return '—';
+  const d = new Date(ts);
+  return d.toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'})+' '+d.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
+}
+function fmtDateOnly(ts){
+  if(!ts) return '—';
+  return new Date(ts).toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'});
+}
+function haversineKm(a, b){
+  const R = 6371;
+  const dLat = (b.lat-a.lat)*Math.PI/180;
+  const dLng = (b.lng-a.lng)*Math.PI/180;
+  const lat1 = a.lat*Math.PI/180, lat2 = b.lat*Math.PI/180;
+  const h = Math.sin(dLat/2)**2 + Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLng/2)**2;
+  return R * 2*Math.atan2(Math.sqrt(h), Math.sqrt(1-h));
+}
+function routeDistanceKm(points){
+  let d = 0;
+  const pts = (points||[]).filter(p=>p.lat!=null);
+  for(let i=1;i<pts.length;i++){ d += haversineKm(pts[i-1], pts[i]); }
+  return d;
+}
+function sum(arr){ return arr.reduce((a,b)=>a+b,0); }
+function avg(arr){ return arr.length ? sum(arr)/arr.length : 0; }
+function fmtPct(v){ return (Math.round(v*1000)/10).toFixed(1)+'%'; }
+
+function cumplimientoDe(r){
+  const total = (r.checkpoints||[]).length;
+  if(total===0) return null; // sin puntos de control definidos
+  const marcados = r.checkpoints.filter(c=>c.marcado).length;
+  return marcados/total;
+}
+function nivelDeCumplimiento(r){
+  const c = cumplimientoDe(r);
+  if(c===null) return 'GRIS';
+  if(c>=1) return 'VERDE';
+  if(c>0) return 'AMARILLO';
+  return 'ROJO';
+}
+
+// ---------- IndexedDB: almacena los rondines importados (incluye fotos) ----------
+const DB_NAME = 'rondines_panel_db';
+const DB_STORE = 'rondines';
+let _dbPromise = null;
+function openDB(){
+  if(_dbPromise) return _dbPromise;
+  _dbPromise = new Promise((resolve, reject)=>{
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = function(){
+      const db = req.result;
+      if(!db.objectStoreNames.contains(DB_STORE)) db.createObjectStore(DB_STORE, {keyPath:'id'});
+    };
+    req.onsuccess = ()=>resolve(req.result);
+    req.onerror = ()=>reject(req.error);
+  });
+  return _dbPromise;
+}
+async function dbPut(rondin){
+  const db = await openDB();
+  return new Promise((resolve,reject)=>{
+    const tx = db.transaction(DB_STORE,'readwrite');
+    tx.objectStore(DB_STORE).put(rondin);
+    tx.oncomplete = ()=>resolve(true);
+    tx.onerror = ()=>reject(tx.error);
+  });
+}
+async function dbGetAll(){
+  const db = await openDB();
+  return new Promise((resolve,reject)=>{
+    const tx = db.transaction(DB_STORE,'readonly');
+    const req = tx.objectStore(DB_STORE).getAll();
+    req.onsuccess = ()=>resolve(req.result||[]);
+    req.onerror = ()=>reject(req.error);
+  });
+}
+async function dbDelete(id){
+  const db = await openDB();
+  return new Promise((resolve,reject)=>{
+    const tx = db.transaction(DB_STORE,'readwrite');
+    tx.objectStore(DB_STORE).delete(id);
+    tx.oncomplete = ()=>resolve(true);
+    tx.onerror = ()=>reject(tx.error);
+  });
+}
+
+let ALL_RONDINES = [];
+
+// ---------- importar archivos JSON ----------
+document.getElementById('dropzone').addEventListener('click', function(e){ /* label ya activa el input */ });
+document.getElementById('fileImportRondines').addEventListener('change', function(e){ handleFiles(e.target.files); });
+const dz = document.getElementById('dropzone');
+dz.addEventListener('dragover', function(e){ e.preventDefault(); dz.classList.add('dragover'); });
+dz.addEventListener('dragleave', function(){ dz.classList.remove('dragover'); });
+dz.addEventListener('drop', function(e){
+  e.preventDefault(); dz.classList.remove('dragover');
+  handleFiles(e.dataTransfer.files);
+});
+
+async function handleFiles(fileList){
+  const msgEl = document.getElementById('importMsg');
+  let ok = 0, fail = 0;
+  for(const file of fileList){
+    try{
+      const text = await file.text();
+      const data = JSON.parse(text);
+      if(!data.id || !data.guardia){ fail++; continue; }
+      await dbPut(data);
+      ok++;
+    } catch(err){ fail++; }
+  }
+  msgEl.textContent = ok+' rondín(es) importado(s) correctamente'+(fail>0?(', '+fail+' con error'):'')+'.';
+  msgEl.className = 'form-msg '+(ok>0?'ok':'err');
+  document.getElementById('fileImportRondines').value = '';
+  await cargarYRenderizar();
+}
+
+// ---------- filtros ----------
+function fillSelect(id, values, allLabel){
+  const sel = document.getElementById(id);
+  const prev = sel.value;
+  sel.innerHTML = `<option value="TODOS">${allLabel}</option>`;
+  values.forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; sel.appendChild(o); });
+  if(values.includes(prev) || prev==='TODOS') sel.value = prev;
+}
+function refreshFilterLists(){
+  const guardias = Array.from(new Set(ALL_RONDINES.map(r=>r.guardia))).sort();
+  const areas = Array.from(new Set(ALL_RONDINES.map(r=>r.area))).sort();
+  fillSelect('fGuardia', guardias, 'Todos los guardias');
+  fillSelect('fArea', areas, 'Todas las áreas');
+}
+
+function applyFilters(){
+  const guardia = document.getElementById('fGuardia').value;
+  const area = document.getElementById('fArea').value;
+  const cumplimiento = document.getElementById('fCumplimiento').value;
+  return ALL_RONDINES.filter(r=>{
+    if(guardia!=='TODOS' && r.guardia!==guardia) return false;
+    if(area!=='TODOS' && r.area!==area) return false;
+    if(cumplimiento!=='TODOS'){
+      const niv = nivelDeCumplimiento(r);
+      if(cumplimiento==='COMPLETO' && niv!=='VERDE') return false;
+      if(cumplimiento==='PARCIAL' && niv!=='AMARILLO') return false;
+      if(cumplimiento==='SIN_PUNTOS' && niv!=='GRIS') return false;
+    }
+    return true;
+  });
+}
+
+// ---------- KPIs ----------
+function renderKpis(records){
+  const total = records.length;
+  const guardiasDistintos = new Set(records.map(r=>r.guardia)).size;
+  const distancias = records.map(r=>routeDistanceKm(r.ruta));
+  const duraciones = records.filter(r=>r.fin).map(r=>(r.fin-r.inicio)/60000);
+  const conPuntos = records.filter(r=>(r.checkpoints||[]).length>0);
+  const cumplimientoProm = conPuntos.length ? avg(conPuntos.map(r=>cumplimientoDe(r))) : 0;
+  const totalFotos = sum(records.map(r=> (r.checkpoints||[]).filter(c=>c.foto).length + (r.paradasLibres||[]).filter(p=>p.foto).length ));
+  const marcadosTotal = sum(records.map(r=>(r.checkpoints||[]).filter(c=>c.marcado).length));
+  const marcadosViaQR = sum(records.map(r=>(r.checkpoints||[]).filter(c=>c.marcado && c.viaQR).length));
+  const pctQR = marcadosTotal>0 ? marcadosViaQR/marcadosTotal : 0;
+  const totalNovedades = sum(records.map(r=>(r.novedades||[]).length));
+  const rondinesConNovedad = records.filter(r=>(r.novedades||[]).length>0).length;
+
+  document.getElementById('totalRondinesLabel').textContent = ALL_RONDINES.length;
+  document.getElementById('totalGuardiasLabel').textContent = new Set(ALL_RONDINES.map(r=>r.guardia)).size;
+
+  document.getElementById('kpisRow').innerHTML = `
+    <div class="kpi"><div class="kpi-accentbar"></div><div class="label">Rondines (filtro)</div><div class="value">${total}</div><div class="sub">${guardiasDistintos} guardia${guardiasDistintos===1?'':'s'} distintos</div></div>
+    <div class="kpi"><div class="kpi-accentbar"></div><div class="label">Distancia promedio</div><div class="value">${avg(distancias).toFixed(2)} km</div><div class="sub">por rondín</div></div>
+    <div class="kpi"><div class="kpi-accentbar"></div><div class="label">Duración promedio</div><div class="value">${Math.round(avg(duraciones))} min</div><div class="sub">por rondín</div></div>
+    <div class="kpi semaforo"><div class="kpi-accentbar"></div><div class="label">Cumplimiento de puntos</div><div class="value"><span class="dot ${cumplimientoProm>=1?'VERDE':(cumplimientoProm>0?'AMARILLO':'ROJO')}"></span>${fmtPct(cumplimientoProm)}</div><div class="sub">${conPuntos.length} rondines con puntos definidos</div></div>
+    <div class="kpi"><div class="kpi-accentbar"></div><div class="label">Confirmado por QR</div><div class="value">${fmtPct(pctQR)}</div><div class="sub">${marcadosViaQR} de ${marcadosTotal} puntos marcados</div></div>
+    <div class="kpi"><div class="kpi-accentbar" style="background:var(--rojo);"></div><div class="label">Novedades encontradas</div><div class="value" style="${totalNovedades>0?'color:var(--rojo);':''}">${totalNovedades}</div><div class="sub">en ${rondinesConNovedad} de ${total} rondines · todas con acción registrada</div></div>
+    <div class="kpi"><div class="kpi-accentbar"></div><div class="label">Evidencia fotográfica</div><div class="value">${totalFotos}</div><div class="sub">fotos en el filtro</div></div>
+  `;
+}
+
+// ---------- gráficas ----------
+// ---------- agregación semanal (por lunes de cada semana calendario) ----------
+function mondayOf(ts){
+  const d = new Date(ts);
+  const day = d.getDay();
+  const diff = (day===0 ? -6 : 1-day);
+  const m = new Date(d.getFullYear(), d.getMonth(), d.getDate()+diff);
+  m.setHours(0,0,0,0);
+  return m;
+}
+function weekKeyOf(ts){ return mondayOf(ts).getTime(); }
+function weekLabelOf(ts){ return mondayOf(ts).toLocaleDateString('es-MX',{day:'2-digit',month:'short'}); }
+
+const PALETTE_AREAS = ['#4f8fd6','#3fb950','#e3b341','#e08a4b','#f0554a','#a371f7','#39c5cf','#e0459b','#8b95a6','#56d364'];
+
+function groupByWeekArea(records){
+  const weeksSet = new Set();
+  const areasSet = new Set();
+  const conteo = {};      // weekKey -> {area -> count de rondines}
+  const novedades = {};   // weekKey -> total de novedades
+  records.forEach(r=>{
+    const wk = weekKeyOf(r.inicio);
+    weeksSet.add(wk);
+    areasSet.add(r.area);
+    if(!conteo[wk]) conteo[wk] = {};
+    conteo[wk][r.area] = (conteo[wk][r.area]||0) + 1;
+    novedades[wk] = (novedades[wk]||0) + (r.novedades||[]).length;
+  });
+  const weeks = Array.from(weeksSet).sort((a,b)=>a-b);
+  const areas = Array.from(areasSet).sort();
+  return {weeks, areas, conteo, novedades};
+}
+
+function renderChartSemanalPorCampo(records){
+  const {weeks, areas, conteo} = groupByWeekArea(records);
+  const labels = weeks.map(w=>weekLabelOf(w));
+  const series = areas.map((area,i)=>({
+    name: area,
+    color: PALETTE_AREAS[i % PALETTE_AREAS.length],
+    values: weeks.map(w => (conteo[w] && conteo[w][area]) || 0)
+  }));
+  drawMultiLineChart(document.getElementById('chartSemanalCampo'), {labels, series});
+}
+
+function renderChartSemanalNovedades(records){
+  const {weeks, conteo, novedades} = groupByWeekArea(records);
+  const labels = weeks.map(w=>weekLabelOf(w));
+  const areasRecorridas = weeks.map(w => Object.keys(conteo[w]||{}).length);
+  const novedadesArr = weeks.map(w => novedades[w]||0);
+  drawComboChart(document.getElementById('chartSemanalNovedades'), {
+    labels, barValues: areasRecorridas, lineValues: novedadesArr,
+    barColors: labels.map(()=>COLORS.accent), lineColor:'#e0459b',
+    barLegend:'áreas recorridas esa semana', lineLegend:'novedades encontradas'
+  });
+}
+
+function groupByGuardia(records){
+  const map = {};
+  records.forEach(r=>{
+    if(!map[r.guardia]) map[r.guardia] = {count:0, distArr:[], durArr:[], cumplArr:[], novedades:0};
+    const m = map[r.guardia];
+    m.count++;
+    m.distArr.push(routeDistanceKm(r.ruta));
+    if(r.fin) m.durArr.push((r.fin-r.inicio)/60000);
+    const c = cumplimientoDe(r);
+    if(c!==null) m.cumplArr.push(c);
+    m.novedades += (r.novedades||[]).length;
+  });
+  return Object.entries(map).map(([k,v])=>({
+    key:k, count:v.count, avgDist: avg(v.distArr), avgDur: avg(v.durArr),
+    avgCumpl: v.cumplArr.length ? avg(v.cumplArr) : null, novedades: v.novedades
+  }));
+}
+
+function renderChartGuardia(records){
+  const groups = groupByGuardia(records).sort((a,b)=>b.avgDist-a.avgDist);
+  drawHBarChart(document.getElementById('chartGuardia'), {
+    labels: groups.map(g=>g.key),
+    values: groups.map(g=>Math.round(g.avgDist*100)/100),
+    colors: groups.map(()=>COLORS.accent),
+    xTitle: 'distancia promedio (km) por rondín',
+    valueFmt: v=>v.toFixed(2)+' km'
+  });
+}
+function renderChartCumplimiento(records){
+  const groups = groupByGuardia(records).filter(g=>g.avgCumpl!=null).sort((a,b)=>a.avgCumpl-b.avgCumpl);
+  drawHBarChart(document.getElementById('chartCumplimiento'), {
+    labels: groups.map(g=>g.key),
+    values: groups.map(g=>Math.round(g.avgCumpl*1000)/10),
+    colors: groups.map(g=> g.avgCumpl>=1 ? COLORS.VERDE : (g.avgCumpl>0.5 ? COLORS.AMARILLO : COLORS.ROJO)),
+    xTitle: '% cumplimiento de puntos de control',
+    valueFmt: v=>v.toFixed(1)+'%'
+  });
+}
+
+function renderChartNovedades(records){
+  const groups = groupByGuardia(records).sort((a,b)=>b.novedades-a.novedades);
+  drawHBarChart(document.getElementById('chartNovedades'), {
+    labels: groups.map(g=>g.key),
+    values: groups.map(g=>g.novedades),
+    colors: groups.map(()=>'#e0459b'),
+    xTitle: 'novedades encontradas (todas con acción registrada)',
+    valueFmt: v=>String(v)
+  });
+}
+
+// ---------- lista de rondines ----------
+function renderRondinesList(records){
+  const cont = document.getElementById('rondinesList');
+  const sorted = records.slice().sort((a,b)=>b.inicio-a.inicio);
+  if(sorted.length===0){
+    cont.innerHTML = '<div style="color:var(--muted);font-size:13px;">No hay rondines para el filtro seleccionado — importe archivos JSON arriba.</div>';
+    return;
+  }
+  cont.innerHTML = sorted.map(r=>{
+    const niv = nivelDeCumplimiento(r);
+    const dist = routeDistanceKm(r.ruta);
+    const dur = r.fin ? Math.round((r.fin-r.inicio)/60000) : null;
+    const totalCp = (r.checkpoints||[]).length;
+    const marcados = (r.checkpoints||[]).filter(c=>c.marcado).length;
+    const numNov = (r.novedades||[]).length;
+    return `<div class="rondin-card ${niv==='GRIS'?'':niv}" data-id="${r.id}">
+      <div class="rc-head">
+        <div>
+          <div class="rc-title">${r.guardia} · ${r.area}</div>
+          <div class="rc-sub">${fmtDateTime(r.inicio)}</div>
+        </div>
+        <span class="tag ${niv==='GRIS'?'':niv}" style="${niv==='GRIS'?'color:var(--muted);background:var(--panel-alt);':''}">${niv==='GRIS'?'SIN PUNTOS':(niv==='VERDE'?'COMPLETO':(niv==='AMARILLO'?'PARCIAL':'SIN MARCAR'))}</span>
+      </div>
+      <div class="rc-stats">
+        <div><b>${dur!=null?dur+' min':'—'}</b>duración</div>
+        <div><b>${dist.toFixed(2)} km</b>distancia</div>
+        <div><b>${marcados}/${totalCp}</b>puntos</div>
+        <div><b>${(r.paradasLibres||[]).length}</b>paradas libres</div>
+        <div><b style="${numNov>0?'color:var(--rojo);':''}">${numNov}</b>novedades</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+document.getElementById('rondinesList').addEventListener('click', function(e){
+  const card = e.target.closest('.rondin-card');
+  if(!card) return;
+  abrirDetalle(card.getAttribute('data-id'));
+});
+
+// ---------- detalle / ruta / fotos ----------
+const modalDetalle = document.getElementById('modalDetalle');
+let rondinDetalleActual = null;
+
+function abrirDetalle(id){
+  const r = ALL_RONDINES.find(x=>x.id===id);
+  if(!r) return;
+  rondinDetalleActual = r;
+  const dist = routeDistanceKm(r.ruta);
+  const dur = r.fin ? Math.round((r.fin-r.inicio)/60000) : null;
+  const totalCp = (r.checkpoints||[]).length;
+  const marcados = (r.checkpoints||[]).filter(c=>c.marcado).length;
+  const numNov = (r.novedades||[]).length;
+
+  document.getElementById('detTitulo').textContent = r.guardia+' · '+r.area;
+  document.getElementById('detSub').textContent = fmtDateTime(r.inicio)+(r.fin?' a '+fmtDateTime(r.fin):' (sin finalizar)');
+  document.getElementById('detKpis').innerHTML = `
+    <div class="kpi"><div class="kpi-accentbar"></div><div class="label">Duración</div><div class="value">${dur!=null?dur+' min':'—'}</div></div>
+    <div class="kpi"><div class="kpi-accentbar"></div><div class="label">Distancia</div><div class="value">${dist.toFixed(2)} km</div></div>
+    <div class="kpi"><div class="kpi-accentbar"></div><div class="label">Puntos de control</div><div class="value">${marcados}/${totalCp}</div></div>
+    <div class="kpi"><div class="kpi-accentbar" style="background:var(--rojo);"></div><div class="label">Novedades</div><div class="value" style="${numNov>0?'color:var(--rojo);':''}">${numNov}</div></div>
+  `;
+
+  drawRouteCanvas(r);
+
+  const filas = [];
+  (r.checkpoints||[]).forEach(c=>{
+    filas.push({nombre:c.nombre, tipo: c.marcado?('Punto de control'+(c.viaQR?' · 📷QR':' · manual')):'NO visitado', ts:c.ts, foto:c.foto, nota:c.nota});
+  });
+  (r.paradasLibres||[]).forEach(p=>{
+    filas.push({nombre:p.descripcion, tipo:'Parada libre', ts:p.ts, foto:p.foto, nota:p.nota});
+  });
+  (r.novedades||[]).forEach(n=>{
+    filas.push({nombre:n.descripcion, tipo:'🔍 Novedad — acción: '+n.accion, ts:n.ts, foto:n.foto, nota:n.nota});
+  });
+  document.getElementById('detThumbs').innerHTML = filas.map(f=>`
+    <div>
+      ${f.foto ? `<img src="${f.foto}" class="det-thumb-img">` : `<div style="width:100%;aspect-ratio:1;border-radius:8px;background:var(--panel-alt);display:flex;align-items:center;justify-content:center;color:var(--muted-dim);font-size:20px;">${f.ts?'📍':'⚠️'}</div>`}
+      <div class="thumb-label">${f.nombre}<br>${f.tipo}<br>${f.ts?fmtDateTime(f.ts):'sin marcar'}</div>
+    </div>
+  `).join('');
+
+  modalDetalle.classList.add('open');
+}
+document.getElementById('detThumbs').addEventListener('click', function(e){
+  const img = e.target.closest('.det-thumb-img');
+  if(!img) return;
+  document.getElementById('lbImg').src = img.src;
+  document.getElementById('lightbox').classList.add('open');
+});
+document.getElementById('lbClose').addEventListener('click', ()=>document.getElementById('lightbox').classList.remove('open'));
+document.getElementById('lightbox').addEventListener('click', function(e){ if(e.target===this) this.classList.remove('open'); });
+
+document.getElementById('btnCerrarDetalle').addEventListener('click', ()=>modalDetalle.classList.remove('open'));
+modalDetalle.addEventListener('click', function(e){ if(e.target===modalDetalle) modalDetalle.classList.remove('open'); });
+document.getElementById('btnEliminarRondin').addEventListener('click', async function(){
+  if(!rondinDetalleActual) return;
+  if(!confirm('¿Eliminar este rondín del panel? Esta acción no se puede deshacer (podrá volver a importarlo si conserva el archivo JSON).')) return;
+  await dbDelete(rondinDetalleActual.id);
+  modalDetalle.classList.remove('open');
+  await cargarYRenderizar();
+});
+
+function drawRouteCanvas(rondin){
+  const canvas = document.getElementById('detRouteCanvas');
+  const parent = canvas.parentElement;
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = parent.clientWidth, cssH = parent.clientHeight;
+  canvas.width = cssW*dpr; canvas.height = cssH*dpr;
+  canvas.style.width = cssW+'px'; canvas.style.height = cssH+'px';
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,cssW,cssH);
+
+  const pts = (rondin.ruta||[]).filter(p=>p.lat!=null);
+  if(pts.length<2){
+    ctx.fillStyle = COLORS.muted; ctx.font='13px Inter, sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('No hay suficientes puntos GPS para dibujar la ruta.', cssW/2, cssH/2);
+    return;
+  }
+  const pad = 30;
+  const lats = pts.map(p=>p.lat), lngs = pts.map(p=>p.lng);
+  const minLat=Math.min(...lats), maxLat=Math.max(...lats), minLng=Math.min(...lngs), maxLng=Math.max(...lngs);
+  const spanLat = Math.max(0.00005, maxLat-minLat), spanLng = Math.max(0.00005, maxLng-minLng);
+  function toXY(p){
+    const x = pad + ((p.lng-minLng)/spanLng) * (cssW-pad*2);
+    const y = (cssH-pad) - ((p.lat-minLat)/spanLat) * (cssH-pad*2);
+    return [x,y];
+  }
+  ctx.strokeStyle = 'rgba(79,143,214,.55)';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  pts.forEach((p,i)=>{ const [x,y]=toXY(p); if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y); });
+  ctx.stroke();
+  function dot(p, color, r){
+    const [x,y] = toXY(p);
+    ctx.beginPath(); ctx.arc(x,y,r||5,0,Math.PI*2); ctx.fillStyle=color; ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.lineWidth=1; ctx.stroke();
+  }
+  (rondin.ruta||[]).filter(p=>p.tipo==='checkpoint' && p.lat!=null).forEach(p=>dot(p, COLORS.VERDE, 5));
+  (rondin.ruta||[]).filter(p=>p.tipo==='parada' && p.lat!=null).forEach(p=>dot(p, COLORS.AMARILLO, 5));
+  (rondin.ruta||[]).filter(p=>p.tipo==='novedad' && p.lat!=null).forEach(p=>dot(p, '#e0459b', 6));
+  dot(pts[0], COLORS.accent, 7);
+  dot(pts[pts.length-1], COLORS.ROJO, 7);
+}
+
+// ---------- render general / filtros / init ----------
+function safe(fn,label){ try{ fn(); }catch(e){ console.error('Error en '+label+':', e); } }
+function renderAll(){
+  const records = applyFilters();
+  safe(()=>renderKpis(records), 'KPIs');
+  safe(()=>renderChartGuardia(records), 'gráfico por guardia');
+  safe(()=>renderChartCumplimiento(records), 'gráfico de cumplimiento');
+  safe(()=>renderChartNovedades(records), 'gráfico de novedades');
+  safe(()=>renderChartSemanalPorCampo(records), 'comparativo semanal por campo');
+  safe(()=>renderChartSemanalNovedades(records), 'semanal de áreas y novedades');
+  safe(()=>renderRondinesList(records), 'lista de rondines');
+}
+async function cargarYRenderizar(){
+  ALL_RONDINES = await dbGetAll();
+  refreshFilterLists();
+  renderAll();
+}
+
+['fGuardia','fArea','fCumplimiento'].forEach(id=>{ document.getElementById(id).addEventListener('change', renderAll); });
+document.getElementById('btnReset').addEventListener('click', function(){
+  document.getElementById('fGuardia').value = 'TODOS';
+  document.getElementById('fArea').value = 'TODOS';
+  document.getElementById('fCumplimiento').value = 'TODOS';
+  renderAll();
+});
+
+cargarYRenderizar();
+
+window.addEventListener('resize', function(){
+  clearTimeout(window._rrt);
+  window._rrt = setTimeout(renderAll, 180);
+});
+
+</script>
+</body>
+</html>
