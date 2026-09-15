@@ -537,6 +537,13 @@ footer.note b{color:var(--muted);}
           </div>
           <div style="color:var(--muted);font-size:12px;margin-top:10px;">Cada punto genera un código QR único. Descárguelo e imprímalo para pegarlo en esa ubicación física — durante el rondín podrá escanearlo con la cámara para marcar el punto automáticamente.</div>
           <div class="punto-qr-grid" id="listaPuntos"></div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px;padding-top:14px;border-top:1px solid var(--border-soft);align-items:center;">
+            <button type="button" class="btn-secondary" id="btnExportarPuntos">⬇ Exportar puntos (JSON)</button>
+            <button type="button" class="btn-secondary" id="btnImportarPuntos">⬆ Importar puntos (JSON)</button>
+            <input type="file" id="fileImportPuntos" accept="application/json" style="display:none;">
+            <span style="color:var(--muted);font-size:11.5px;">Configure los puntos una sola vez y mande este archivo a los demás teléfonos, para no tener que volver a escribirlos.</span>
+          </div>
+          <div class="form-msg" id="puntosImportMsg" style="margin-top:8px;"></div>
         </div>
       </div>
     </div>
@@ -847,6 +854,43 @@ renderPuntosList();
 
 const panelPuntos = document.getElementById('panelPuntos');
 document.getElementById('panelPuntosHead').addEventListener('click', ()=>{ panelPuntos.classList.toggle('open'); });
+
+// ---------- exportar / importar la plantilla de puntos de control ----------
+document.getElementById('btnExportarPuntos').addEventListener('click', function(){
+  const puntos = loadPuntos();
+  const blob = new Blob([JSON.stringify(puntos, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'puntos_de_control_rondines.json';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+});
+document.getElementById('btnImportarPuntos').addEventListener('click', function(){
+  document.getElementById('fileImportPuntos').click();
+});
+document.getElementById('fileImportPuntos').addEventListener('change', function(e){
+  const file = e.target.files[0];
+  const msgEl = document.getElementById('puntosImportMsg');
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = function(ev){
+    try{
+      const imported = JSON.parse(ev.target.result);
+      if(!Array.isArray(imported)) throw new Error('El archivo no tiene el formato esperado.');
+      const actuales = loadPuntos();
+      const combinados = Array.from(new Set([...actuales, ...imported.map(String)]));
+      savePuntos(combinados);
+      renderPuntosList();
+      msgEl.textContent = imported.length+' punto(s) importado(s) — se combinaron con los que ya tenía (sin duplicar).';
+      msgEl.className = 'form-msg ok';
+    } catch(err){
+      msgEl.textContent = 'No se pudo leer el archivo: '+err.message;
+      msgEl.className = 'form-msg err';
+    }
+    document.getElementById('fileImportPuntos').value = '';
+  };
+  reader.readAsText(file);
+});
 
 // ---------- geolocalización ----------
 let watchId = null;
