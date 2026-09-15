@@ -1,0 +1,17 @@
+{
+  "name": "Rondines - Panel de Supervisión",
+  "short_name": "Rondines Panel",
+  "description": "Panel para importar y revisar los rondines de todos los guardias",
+  "start_url": "./panel.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#10141b",
+  "theme_color": "#e08a4b",
+  "icons": [
+    { "src": "panel-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "panel-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "panel-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "panel-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
