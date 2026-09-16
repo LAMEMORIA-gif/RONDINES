@@ -4,6 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Rondines de Seguridad · App de Guardia</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="theme-color" content="#4f8fd6">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Rondines">
 <!-- Usa GPS y cámara del dispositivo; no requiere conexión a internet para funcionar (el mapa se dibuja
      como trazo de coordenadas, no como mapa de calles). Ábrase idealmente desde un servidor local o
      como acceso directo guardado, ya que algunos navegadores restringen el GPS en archivos abiertos
@@ -527,16 +535,25 @@ footer.note b{color:var(--muted);}
       <div class="add-panel-body">
         <div style="padding:16px 18px;">
           <div style="color:var(--muted);font-size:12.5px;margin-bottom:12px;">
-            Defina aquí los puntos fijos que el guardia debe visitar en cada rondín (ej. Puerta principal, Almacén,
-            Comedor, Caseta Norte...). Se guardan en este teléfono y se reutilizan en cada recorrido. Durante el
-            rondín también podrá agregar paradas libres adicionales que no estén en esta lista.
+            Defina aquí los puntos fijos que el guardia debe visitar en cada rondín, <b>por cada Área/Campo</b>
+            (ej. en "Campo Palomas": Oficina RH, Oficinas Producción, Caseta Norte...). Escriba primero el
+            Área/Campo en el formulario de arriba — los puntos que agregue aquí abajo se guardan para esa área
+            específica. Se guardan en este teléfono y se reutilizan en cada recorrido de esa misma área. Durante
+            el rondín también podrá agregar paradas libres adicionales que no estén en esta lista.
           </div>
-          <div style="display:flex;gap:8px;">
+          <div style="display:flex;gap:8px;" id="formNuevoPunto">
             <input type="text" id="inNuevoPunto" placeholder="Nombre del punto de control" style="flex:1;background:var(--panel-alt);border:1px solid var(--border);border-radius:9px;padding:10px 12px;color:var(--text);">
             <button type="button" class="btn-primary" id="btnAgregarPunto" style="white-space:nowrap;">Agregar</button>
           </div>
-          <div style="color:var(--muted);font-size:12px;margin-top:10px;">Cada punto genera un código QR único. Descárguelo e imprímalo para pegarlo en esa ubicación física — durante el rondín podrá escanearlo con la cámara para marcar el punto automáticamente.</div>
+          <div style="color:var(--muted);font-size:12px;margin-top:10px;">Cada punto genera un código QR único (con su área incluida). Descárguelo e imprímalo para pegarlo en esa ubicación física — durante el rondín podrá escanearlo con la cámara para marcar el punto automáticamente.</div>
           <div class="punto-qr-grid" id="listaPuntos"></div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px;padding-top:14px;border-top:1px solid var(--border-soft);align-items:center;">
+            <button type="button" class="btn-secondary" id="btnExportarPuntos">⬇ Exportar puntos (JSON)</button>
+            <button type="button" class="btn-secondary" id="btnImportarPuntos">⬆ Importar puntos (JSON)</button>
+            <input type="file" id="fileImportPuntos" accept="application/json" style="display:none;">
+            <span style="color:var(--muted);font-size:11.5px;">Configure los puntos una sola vez y mande este archivo a los demás teléfonos, para no tener que volver a escribirlos.</span>
+          </div>
+          <div class="form-msg" id="puntosImportMsg" style="margin-top:8px;"></div>
         </div>
       </div>
     </div>
@@ -789,17 +806,43 @@ async function dbDeleteRondin(id){
   });
 }
 
-// ---------- plantilla de puntos de control (persistida en localStorage — son solo texto, ligero) ----------
-const PUNTOS_KEY = 'rondines_puntos_v1';
-function loadPuntos(){ try{ const raw = localStorage.getItem(PUNTOS_KEY); return raw ? JSON.parse(raw) : []; } catch(e){ return []; } }
-function savePuntos(list){ try{ localStorage.setItem(PUNTOS_KEY, JSON.stringify(list)); return true; }catch(e){ return false; } }
+// ---------- plantilla de puntos de control, organizada POR CAMPO/ÁREA ----------
+// Formato: { "Campo Palomas": ["Oficina RH", "Oficinas Producción"], "Campo Empaque": [...] }
+const PUNTOS_KEY = 'rondines_puntos_v2';
+function loadPuntosPorArea(){
+  try{
+    const raw = localStorage.getItem(PUNTOS_KEY);
+    if(!raw) return {};
+    const data = JSON.parse(raw);
+    if(Array.isArray(data)) return {}; // formato viejo (lista plana) — se descarta, no aplica a ningún área específica
+    return data;
+  } catch(e){ return {}; }
+}
+function savePuntosPorArea(obj){ try{ localStorage.setItem(PUNTOS_KEY, JSON.stringify(obj)); return true; }catch(e){ return false; } }
+function getPuntosDeArea(area){
+  const todo = loadPuntosPorArea();
+  const key = Object.keys(todo).find(k=>k.trim().toLowerCase()===area.trim().toLowerCase());
+  return key ? todo[key] : [];
+}
+function areaActualEnPanel(){ return document.getElementById('inArea').value.trim(); }
 
 function renderPuntosList(){
-  const puntos = loadPuntos();
-  document.getElementById('puntosHint').textContent = puntos.length+' punto'+(puntos.length===1?'':'s')+' configurado'+(puntos.length===1?'':'s');
-  document.getElementById('listaPuntos').innerHTML = puntos.map((p,i)=>{
+  const area = areaActualEnPanel();
+  const hintEl = document.getElementById('puntosHint');
+  const listaEl = document.getElementById('listaPuntos');
+  const formEl = document.getElementById('formNuevoPunto');
+  if(!area){
+    hintEl.textContent = 'escriba un área arriba primero';
+    listaEl.innerHTML = '<span style="color:var(--muted);font-size:12px;">Escriba el nombre del Área / Campo en el formulario de arriba para administrar sus puntos de control.</span>';
+    formEl.style.display = 'none';
+    return;
+  }
+  formEl.style.display = 'flex';
+  const puntos = getPuntosDeArea(area);
+  hintEl.textContent = puntos.length+' punto'+(puntos.length===1?'':'s')+' en "'+area+'"';
+  listaEl.innerHTML = puntos.map((p,i)=>{
     let qrSrc = '';
-    try{ qrSrc = generarQRDataURL(QR_PREFIX+p, 5); } catch(e){ console.error('No se pudo generar QR para', p, e); }
+    try{ qrSrc = generarQRDataURL(QR_PREFIX+area+'::'+p, 5); } catch(e){ console.error('No se pudo generar QR para', p, e); }
     return `
     <div class="punto-qr-card">
       ${qrSrc ? `<img src="${qrSrc}" alt="QR de ${p}">` : '<div style="color:var(--muted);font-size:11px;">QR no disponible</div>'}
@@ -809,15 +852,19 @@ function renderPuntosList(){
         <button type="button" class="btn-del-punto del" data-idx="${i}">✕ Quitar</button>
       </div>
     </div>`;
-  }).join('') || '<span style="color:var(--muted);font-size:12px;">Aún no hay puntos configurados.</span>';
+  }).join('') || '<span style="color:var(--muted);font-size:12px;">Aún no hay puntos configurados para esta área.</span>';
 }
+document.getElementById('inArea').addEventListener('input', renderPuntosList);
 document.getElementById('btnAgregarPunto').addEventListener('click', function(){
+  const area = areaActualEnPanel();
+  if(!area) return;
   const input = document.getElementById('inNuevoPunto');
   const val = input.value.trim();
   if(!val) return;
-  const puntos = loadPuntos();
-  puntos.push(val);
-  savePuntos(puntos);
+  const todo = loadPuntosPorArea();
+  if(!todo[area]) todo[area] = [];
+  todo[area].push(val);
+  savePuntosPorArea(todo);
   input.value = '';
   renderPuntosList();
 });
@@ -825,21 +872,21 @@ document.getElementById('inNuevoPunto').addEventListener('keydown', function(e){
   if(e.key==='Enter'){ e.preventDefault(); document.getElementById('btnAgregarPunto').click(); }
 });
 document.getElementById('listaPuntos').addEventListener('click', function(e){
+  const area = areaActualEnPanel();
   const delBtn = e.target.closest('.btn-del-punto');
   if(delBtn){
     const idx = parseInt(delBtn.getAttribute('data-idx'),10);
-    const puntos = loadPuntos();
-    puntos.splice(idx,1);
-    savePuntos(puntos);
+    const todo = loadPuntosPorArea();
+    if(todo[area]){ todo[area].splice(idx,1); savePuntosPorArea(todo); }
     renderPuntosList();
     return;
   }
   const dlBtn = e.target.closest('.btn-download-qr');
   if(dlBtn){
     const nombre = dlBtn.getAttribute('data-nombre');
-    const dataUrl = generarQRDataURL(QR_PREFIX+nombre, 8);
+    const dataUrl = generarQRDataURL(QR_PREFIX+area+'::'+nombre, 8);
     const a = document.createElement('a');
-    a.href = dataUrl; a.download = 'QR_'+nombre.replace(/\s+/g,'_')+'.gif';
+    a.href = dataUrl; a.download = 'QR_'+area.replace(/\s+/g,'_')+'_'+nombre.replace(/\s+/g,'_')+'.gif';
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
   }
 });
@@ -847,6 +894,52 @@ renderPuntosList();
 
 const panelPuntos = document.getElementById('panelPuntos');
 document.getElementById('panelPuntosHead').addEventListener('click', ()=>{ panelPuntos.classList.toggle('open'); });
+
+// ---------- exportar / importar la plantilla de puntos de control (todas las áreas) ----------
+document.getElementById('btnExportarPuntos').addEventListener('click', function(){
+  const todo = loadPuntosPorArea();
+  const blob = new Blob([JSON.stringify(todo, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'puntos_de_control_rondines.json';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+});
+document.getElementById('btnImportarPuntos').addEventListener('click', function(){
+  document.getElementById('fileImportPuntos').click();
+});
+document.getElementById('fileImportPuntos').addEventListener('change', function(e){
+  const file = e.target.files[0];
+  const msgEl = document.getElementById('puntosImportMsg');
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = function(ev){
+    try{
+      const imported = JSON.parse(ev.target.result);
+      if(Array.isArray(imported) || typeof imported!=='object' || imported===null) throw new Error('El archivo no tiene el formato esperado (debe ser puntos organizados por área).');
+      const actuales = loadPuntosPorArea();
+      let totalPuntos = 0, totalAreas = 0;
+      Object.keys(imported).forEach(area=>{
+        if(!Array.isArray(imported[area])) return;
+        totalAreas++;
+        if(!actuales[area]) actuales[area] = [];
+        imported[area].forEach(p=>{
+          totalPuntos++;
+          if(!actuales[area].includes(p)) actuales[area].push(p);
+        });
+      });
+      savePuntosPorArea(actuales);
+      renderPuntosList();
+      msgEl.textContent = totalPuntos+' punto(s) de '+totalAreas+' área(s) importados — se combinaron con los que ya tenía (sin duplicar).';
+      msgEl.className = 'form-msg ok';
+    } catch(err){
+      msgEl.textContent = 'No se pudo leer el archivo: '+err.message;
+      msgEl.className = 'form-msg err';
+    }
+    document.getElementById('fileImportPuntos').value = '';
+  };
+  reader.readAsText(file);
+});
 
 // ---------- geolocalización ----------
 let watchId = null;
@@ -1008,7 +1101,15 @@ document.getElementById('qrScanInput').addEventListener('change', async function
       msgEl.className = 'form-msg err';
       return;
     }
-    const nombre = raw.slice(QR_PREFIX.length);
+    const resto = raw.slice(QR_PREFIX.length);
+    const sepIdx = resto.indexOf('::');
+    const areaQR = sepIdx>-1 ? resto.slice(0,sepIdx) : '';
+    const nombre = sepIdx>-1 ? resto.slice(sepIdx+2) : resto;
+    if(areaQR && areaQR.trim().toLowerCase()!==rondinActivo.area.trim().toLowerCase()){
+      msgEl.textContent = 'Este QR es del área "'+areaQR+'", pero este rondín es de "'+rondinActivo.area+'". Verifique que esté en el campo correcto.';
+      msgEl.className = 'form-msg err';
+      return;
+    }
     const idx = rondinActivo.checkpoints.findIndex(c=>c.nombre===nombre);
     if(idx===-1){
       msgEl.textContent = 'El QR corresponde a "'+nombre+'", que no está en la ruta configurada de este rondín.';
@@ -1140,7 +1241,7 @@ document.getElementById('btnIniciarRondin').addEventListener('click', function()
     msgEl.className = 'form-msg err';
     return;
   }
-  const puntos = loadPuntos();
+  const puntos = getPuntosDeArea(area);
   rondinActivo = {
     id: nextId('rondin'),
     guardia, area,
