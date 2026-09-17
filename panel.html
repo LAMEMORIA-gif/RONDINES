@@ -1470,6 +1470,13 @@ window.addEventListener('resize', function(){
   window._rrt = setTimeout(renderAll, 180);
 });
 
+// ---------- registrar Service Worker (permite abrir la app sin conexión a internet) ----------
+if("serviceWorker" in navigator){
+  window.addEventListener("load", function(){
+    navigator.serviceWorker.register("sw.js").catch(function(err){ console.error("No se pudo registrar el Service Worker:", err); });
+  });
+}
+
 </script>
 </body>
 </html>
