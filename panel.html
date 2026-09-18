@@ -513,6 +513,15 @@ footer.note b{color:var(--muted);}
         <option value="SIN_PUNTOS">Sin puntos de control</option>
       </select>
     </div>
+    <div class="field">
+      <label for="fTurno">Turno</label>
+      <select id="fTurno">
+        <option value="TODOS">Todos los turnos</option>
+        <option value="Matutino">Matutino</option>
+        <option value="Vespertino">Vespertino</option>
+        <option value="Nocturno">Nocturno</option>
+      </select>
+    </div>
     <button class="btn-reset" id="btnReset">Restablecer filtros</button>
   </div>
 
@@ -547,6 +556,19 @@ footer.note b{color:var(--muted);}
     <h2>🔍 Novedades encontradas por guardia</h2>
     <div class="desc">Indicador de efectividad del recorrido — un guardia que reporta 0 novedades puede reflejar una zona segura o una revisión poco atenta; compárelo con el % de cumplimiento de puntos para tener el panorama completo</div>
     <div class="chart-box tall"><canvas id="chartNovedades"></canvas></div>
+  </div>
+
+  <div class="grid2" style="margin-top:22px;">
+    <div class="panel">
+      <h2>Cobertura por turno</h2>
+      <div class="desc">Rondines realizados por turno, dentro del filtro activo</div>
+      <div class="chart-box tall"><canvas id="chartTurno"></canvas></div>
+    </div>
+    <div class="panel">
+      <h2>Tipos de novedad más frecuentes</h2>
+      <div class="desc">Qué tan seguido se repite cada tipo de novedad, dentro del filtro activo</div>
+      <div class="chart-box tall"><canvas id="chartTiposNovedad"></canvas></div>
+    </div>
   </div>
 
   <div class="section-title" style="margin-top:22px;">
@@ -985,9 +1007,11 @@ function applyFilters(){
   const guardia = document.getElementById('fGuardia').value;
   const area = document.getElementById('fArea').value;
   const cumplimiento = document.getElementById('fCumplimiento').value;
+  const turno = document.getElementById('fTurno').value;
   return ALL_RONDINES.filter(r=>{
     if(guardia!=='TODOS' && r.guardia!==guardia) return false;
     if(area!=='TODOS' && r.area!==area) return false;
+    if(turno!=='TODOS' && r.turno!==turno) return false;
     if(cumplimiento!=='TODOS'){
       const niv = nivelDeCumplimiento(r);
       if(cumplimiento==='COMPLETO' && niv!=='VERDE') return false;
@@ -1133,6 +1157,32 @@ function renderChartNovedades(records){
   });
 }
 
+function renderChartTurno(records){
+  const map = {};
+  records.forEach(r=>{ const t = r.turno||'Sin especificar'; map[t] = (map[t]||0)+1; });
+  const orden = ['Matutino','Vespertino','Nocturno','Sin especificar'];
+  const entries = orden.filter(t=>map[t]).map(t=>[t, map[t]]);
+  drawHBarChart(document.getElementById('chartTurno'), {
+    labels: entries.map(e=>e[0]), values: entries.map(e=>e[1]),
+    colors: entries.map(()=>COLORS.accent), xTitle:'rondines realizados', valueFmt:v=>String(v)
+  });
+}
+
+function renderChartTiposNovedad(records){
+  const map = {};
+  records.forEach(r=>{
+    (r.novedades||[]).forEach(n=>{
+      const t = n.tipoNovedad || 'Sin tipificar';
+      map[t] = (map[t]||0)+1;
+    });
+  });
+  const entries = Object.entries(map).sort((a,b)=>b[1]-a[1]);
+  drawHBarChart(document.getElementById('chartTiposNovedad'), {
+    labels: entries.map(e=>e[0]), values: entries.map(e=>e[1]),
+    colors: entries.map(()=>'#e0459b'), xTitle:'novedades reportadas', valueFmt:v=>String(v)
+  });
+}
+
 // ---------- lista de rondines ----------
 function renderRondinesList(records){
   const cont = document.getElementById('rondinesList');
@@ -1151,7 +1201,7 @@ function renderRondinesList(records){
     return `<div class="rondin-card ${niv==='GRIS'?'':niv}" data-id="${r.id}">
       <div class="rc-head">
         <div>
-          <div class="rc-title">${r.guardia} · ${r.area}</div>
+          <div class="rc-title">${r.guardia} · ${r.area}${r.turno?' · '+r.turno:''}</div>
           <div class="rc-sub">${fmtDateTime(r.inicio)}</div>
         </div>
         <span class="tag ${niv==='GRIS'?'':niv}" style="${niv==='GRIS'?'color:var(--muted);background:var(--panel-alt);':''}">${niv==='GRIS'?'SIN PUNTOS':(niv==='VERDE'?'COMPLETO':(niv==='AMARILLO'?'PARCIAL':'SIN MARCAR'))}</span>
@@ -1187,7 +1237,7 @@ function abrirDetalle(id){
   const numNov = (r.novedades||[]).length;
 
   document.getElementById('detTitulo').textContent = r.guardia+' · '+r.area;
-  document.getElementById('detSub').textContent = fmtDateTime(r.inicio)+(r.fin?' a '+fmtDateTime(r.fin):' (sin finalizar)');
+  document.getElementById('detSub').textContent = (r.turno?r.turno+' · ':'')+fmtDateTime(r.inicio)+(r.fin?' a '+fmtDateTime(r.fin):' (sin finalizar)');
   document.getElementById('detKpis').innerHTML = `
     <div class="kpi"><div class="kpi-accentbar"></div><div class="label">Duración</div><div class="value">${dur!=null?dur+' min':'—'}</div></div>
     <div class="kpi"><div class="kpi-accentbar"></div><div class="label">Distancia</div><div class="value">${dist.toFixed(2)} km</div></div>
@@ -1205,7 +1255,7 @@ function abrirDetalle(id){
     filas.push({nombre:p.descripcion, tipo:'Parada libre', ts:p.ts, foto:p.foto, nota:p.nota});
   });
   (r.novedades||[]).forEach(n=>{
-    filas.push({nombre:n.descripcion, tipo:'🔍 Novedad — acción: '+n.accion, ts:n.ts, foto:n.foto, nota:n.nota});
+    filas.push({nombre:n.descripcion, tipo:'🔍 '+(n.tipoNovedad||'Novedad')+' — acción: '+n.accion, ts:n.ts, foto:n.foto, nota:n.nota});
   });
   document.getElementById('detThumbs').innerHTML = filas.map(f=>`
     <div>
@@ -1286,6 +1336,8 @@ function renderAll(){
   safe(()=>renderChartGuardia(records), 'gráfico por guardia');
   safe(()=>renderChartCumplimiento(records), 'gráfico de cumplimiento');
   safe(()=>renderChartNovedades(records), 'gráfico de novedades');
+  safe(()=>renderChartTurno(records), 'gráfico de turno');
+  safe(()=>renderChartTiposNovedad(records), 'gráfico de tipos de novedad');
   safe(()=>renderChartSemanalPorCampo(records), 'comparativo semanal por campo');
   safe(()=>renderChartSemanalNovedades(records), 'semanal de áreas y novedades');
   safe(()=>renderRondinesList(records), 'lista de rondines');
@@ -1455,11 +1507,12 @@ document.getElementById('fileImportPuntosAdmin').addEventListener('change', func
 renderAreaChips();
 seleccionarAreaAdmin('');
 
-['fGuardia','fArea','fCumplimiento'].forEach(id=>{ document.getElementById(id).addEventListener('change', renderAll); });
+['fGuardia','fArea','fCumplimiento','fTurno'].forEach(id=>{ document.getElementById(id).addEventListener('change', renderAll); });
 document.getElementById('btnReset').addEventListener('click', function(){
   document.getElementById('fGuardia').value = 'TODOS';
   document.getElementById('fArea').value = 'TODOS';
   document.getElementById('fCumplimiento').value = 'TODOS';
+  document.getElementById('fTurno').value = 'TODOS';
   renderAll();
 });
 

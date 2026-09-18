@@ -459,7 +459,7 @@ footer.note b{color:var(--muted);}
 .modal-overlay.rondin-modal .modal-box{max-width:420px;}
 .field-inline{display:flex;flex-direction:column;gap:6px;margin-bottom:12px;}
 .field-inline label{font-size:12px;color:var(--muted);}
-.field-inline input, .field-inline textarea{
+.field-inline input, .field-inline select, .field-inline textarea{
   background:var(--panel-alt);border:1px solid var(--border);border-radius:9px;padding:10px 12px;color:var(--text);
   font-family:inherit;font-size:14px;
 }
@@ -521,6 +521,15 @@ footer.note b{color:var(--muted);}
       <div class="field-inline">
         <label class="req">Área / Campo</label>
         <input type="text" id="inArea" placeholder="Ej. Campo Palomas">
+      </div>
+      <div class="field-inline" style="margin-bottom:0;">
+        <label class="req">Turno</label>
+        <select id="inTurno">
+          <option value="">— Seleccionar —</option>
+          <option value="Matutino">Matutino</option>
+          <option value="Vespertino">Vespertino</option>
+          <option value="Nocturno">Nocturno</option>
+        </select>
       </div>
     </div>
 
@@ -668,6 +677,21 @@ footer.note b{color:var(--muted);}
     <div class="modal-box">
       <h3 id="modalTitulo">Marcar punto</h3>
       <div class="modal-sub" id="modalSub">—</div>
+      <div class="field-inline" id="modalTipoNovedadField" style="display:none;">
+        <label class="req">Tipo de novedad</label>
+        <select id="modalTipoNovedad">
+          <option value="">— Seleccionar —</option>
+          <option value="Robo">Robo</option>
+          <option value="Daño a instalación">Daño a instalación</option>
+          <option value="Persona sospechosa">Persona sospechosa</option>
+          <option value="Vehículo sospechoso">Vehículo sospechoso</option>
+          <option value="Falla eléctrica">Falla eléctrica</option>
+          <option value="Fuga de agua o gas">Fuga de agua o gas</option>
+          <option value="Incendio / conato de incendio">Incendio / conato de incendio</option>
+          <option value="Accidente">Accidente</option>
+          <option value="Otro">Otro</option>
+        </select>
+      </div>
       <div class="field-inline" id="modalDescField" style="display:none;">
         <label class="req" id="modalDescLabel">Descripción de la parada</label>
         <input type="text" id="modalDescripcion" placeholder="Ej. Reja trasera dañada">
@@ -1049,7 +1073,7 @@ function renderNovedadesList(){
     <div class="cp-item" style="border-color:rgba(240,85,74,.4);background:var(--rojo-soft);">
       <div class="cp-icon" style="background:var(--rojo);color:#fff;">🔍</div>
       <div class="cp-body">
-        <div class="cp-name">${n.descripcion}</div>
+        <div class="cp-name">${n.tipoNovedad?('['+n.tipoNovedad+'] '):''}${n.descripcion}</div>
         <div class="cp-meta">✅ ${n.accion}</div>
         <div class="cp-meta">${fmtDateTime(n.ts)}${n.foto?' · 📷':''}</div>
       </div>
@@ -1141,6 +1165,8 @@ function abrirModalMarca(ctx){
   document.getElementById('modalNota').value = '';
   document.getElementById('modalAccionField').style.display = 'none';
   document.getElementById('modalAccion').value = '';
+  document.getElementById('modalTipoNovedadField').style.display = 'none';
+  document.getElementById('modalTipoNovedad').value = '';
   document.getElementById('modalMsg').className = 'form-msg';
   const gpsTxt = gpsOk ? 'Se registrará su ubicación actual' : 'Sin ubicación GPS aún — se guardará sin coordenadas';
   if(ctx.tipo==='checkpoint'){
@@ -1153,6 +1179,7 @@ function abrirModalMarca(ctx){
   } else if(ctx.tipo==='novedad'){
     document.getElementById('modalTitulo').textContent = '🔍 Reportar novedad';
     document.getElementById('modalSub').textContent = gpsTxt;
+    document.getElementById('modalTipoNovedadField').style.display = 'block';
     document.getElementById('modalDescField').style.display = 'block';
     document.getElementById('modalDescLabel').textContent = 'Novedad encontrada';
     document.getElementById('modalDescripcion').placeholder = 'Ej. Candado forzado en almacén 2';
@@ -1203,11 +1230,13 @@ document.getElementById('btnConfirmarMarca').addEventListener('click', function(
     cp.foto = modalFotoData; cp.nota = nota; cp.viaQR = !!modalContexto.viaQR;
     if(pos.lat!=null) rondinActivo.ruta.push(Object.assign({tipo:'checkpoint'}, pos));
   } else if(modalContexto.tipo==='novedad'){
+    const tipoNovedad = document.getElementById('modalTipoNovedad').value;
     const desc = document.getElementById('modalDescripcion').value.trim();
     const accion = document.getElementById('modalAccion').value.trim();
+    if(!tipoNovedad){ msgEl.textContent = 'Seleccione el tipo de novedad.'; msgEl.className = 'form-msg err'; return; }
     if(!desc){ msgEl.textContent = 'Describa la novedad encontrada.'; msgEl.className = 'form-msg err'; return; }
     if(!accion){ msgEl.textContent = 'Escriba la acción realizada — es indispensable para medir la efectividad del rondín.'; msgEl.className = 'form-msg err'; return; }
-    rondinActivo.novedades.push({ descripcion: desc, accion, lat:pos.lat, lng:pos.lng, acc:pos.acc, ts, foto: modalFotoData, nota });
+    rondinActivo.novedades.push({ tipoNovedad, descripcion: desc, accion, lat:pos.lat, lng:pos.lng, acc:pos.acc, ts, foto: modalFotoData, nota });
     if(pos.lat!=null) rondinActivo.ruta.push(Object.assign({tipo:'novedad'}, pos));
   } else {
     const desc = document.getElementById('modalDescripcion').value.trim();
@@ -1235,16 +1264,17 @@ function showScreen(name){
 document.getElementById('btnIniciarRondin').addEventListener('click', function(){
   const guardia = document.getElementById('inGuardia').value.trim();
   const area = document.getElementById('inArea').value.trim();
+  const turno = document.getElementById('inTurno').value;
   const msgEl = document.getElementById('setupMsg');
-  if(!guardia || !area){
-    msgEl.textContent = 'Escriba el nombre del guardia y el área antes de iniciar.';
+  if(!guardia || !area || !turno){
+    msgEl.textContent = 'Escriba el nombre del guardia, el área y seleccione el turno antes de iniciar.';
     msgEl.className = 'form-msg err';
     return;
   }
   const puntos = getPuntosDeArea(area);
   rondinActivo = {
     id: nextId('rondin'),
-    guardia, area,
+    guardia, area, turno,
     inicio: Date.now(), fin: null,
     checkpoints: puntos.map(nombre=>({nombre, marcado:false, lat:null,lng:null,ts:null,foto:null,nota:''})),
     paradasLibres: [],
@@ -1278,7 +1308,7 @@ async function mostrarResumen(rondin){
   const totalCp = rondin.checkpoints.length;
   const numNovedades = rondin.novedades.length;
 
-  document.getElementById('resumenSub').textContent = rondin.guardia+' · '+rondin.area+' · '+fmtDateTime(rondin.inicio)+' a '+fmtDateTime(rondin.fin);
+  document.getElementById('resumenSub').textContent = rondin.guardia+' · '+rondin.area+' · '+(rondin.turno?rondin.turno+' · ':'')+fmtDateTime(rondin.inicio)+' a '+fmtDateTime(rondin.fin);
   document.getElementById('resumenKpis').innerHTML = `
     <div class="kpi"><div class="kpi-accentbar"></div><div class="label">Duración</div><div class="value">${durMin} min</div><div class="sub">${fmtTime(rondin.fin-rondin.inicio)}</div></div>
     <div class="kpi"><div class="kpi-accentbar"></div><div class="label">Distancia</div><div class="value">${distKm.toFixed(2)} km</div><div class="sub">${rondin.ruta.length} puntos GPS registrados</div></div>
@@ -1297,7 +1327,7 @@ async function mostrarResumen(rondin){
     filas.push({tipo:'Parada libre', nombre:p.descripcion, ts:p.ts, foto:p.foto, nota:p.nota, marcado:true});
   });
   rondin.novedades.forEach(n=>{
-    filas.push({tipo:'🔍 Novedad — acción: '+n.accion, nombre:n.descripcion, ts:n.ts, foto:n.foto, nota:n.nota, marcado:true});
+    filas.push({tipo:'🔍 '+(n.tipoNovedad||'Novedad')+' — acción: '+n.accion, nombre:n.descripcion, ts:n.ts, foto:n.foto, nota:n.nota, marcado:true});
   });
   document.getElementById('resumenDetalle').innerHTML = filas.map(f=>`
     <div class="free-stop-item" style="margin-bottom:10px;${f.marcado?'':'opacity:.55;'}">
@@ -1391,7 +1421,7 @@ async function renderHistorial(){
     const numNov = (r.novedades||[]).length;
     return `<div class="history-item">
       <div>
-        <div class="h-main">${r.guardia} · ${r.area}${numNov>0?' · <span style="color:var(--rojo);">🔍 '+numNov+' novedad'+(numNov===1?'':'es')+'</span>':''}</div>
+        <div class="h-main">${r.guardia} · ${r.area}${r.turno?' · '+r.turno:''}${numNov>0?' · <span style="color:var(--rojo);">🔍 '+numNov+' novedad'+(numNov===1?'':'es')+'</span>':''}</div>
         <div class="h-sub">${fmtDateTime(r.inicio)} · ${durMin} min · ${dist.toFixed(2)} km · ${marcados}/${totalCp} puntos · ${(r.paradasLibres||[]).length} paradas</div>
       </div>
       <div class="h-actions">
