@@ -697,8 +697,9 @@ footer.note b{color:var(--muted);}
         <input type="text" id="modalDescripcion" placeholder="Ej. Reja trasera dañada">
       </div>
       <div class="field-inline" id="modalAccionField" style="display:none;">
-        <label class="req">Acción realizada</label>
+        <label id="modalAccionLabel">Acción realizada (si ya se resolvió)</label>
         <input type="text" id="modalAccion" placeholder="Ej. Se reportó a mantenimiento y se cerró temporalmente">
+        <div style="color:var(--muted);font-size:11.5px;margin-top:-2px;">Déjelo en blanco si aún no se resuelve — podrá marcarla como resuelta después, y se medirá el tiempo de respuesta.</div>
       </div>
       <div class="field-inline">
         <label>Evidencia fotográfica (opcional)</label>
@@ -744,6 +745,13 @@ function fmtTime(ms){
 function fmtDateTime(ts){
   const d = new Date(ts);
   return d.toLocaleDateString('es-MX',{day:'2-digit',month:'short'})+' '+d.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
+}
+function fmtDuracionMin(ini, fin){
+  if(!ini || !fin) return '—';
+  const mins = Math.round((fin-ini)/60000);
+  if(mins<60) return mins+' min';
+  const h = Math.floor(mins/60), m = mins%60;
+  return h+'h '+m+'min';
 }
 function haversineKm(a, b){
   const R = 6371;
@@ -1070,16 +1078,24 @@ function renderNovedadesList(){
   if(rondinActivo.novedades.length===0){ wrap.style.display='none'; return; }
   wrap.style.display='block';
   cont.innerHTML = rondinActivo.novedades.map((n,i)=>`
-    <div class="cp-item" style="border-color:rgba(240,85,74,.4);background:var(--rojo-soft);">
-      <div class="cp-icon" style="background:var(--rojo);color:#fff;">🔍</div>
+    <div class="cp-item ${n.resuelta?'done':''}" style="${n.resuelta?'':'border-color:rgba(240,85,74,.4);background:var(--rojo-soft);'}">
+      <div class="cp-icon" style="${n.resuelta?'':'background:var(--rojo);color:#fff;'}">${n.resuelta?'✓':'🔍'}</div>
       <div class="cp-body">
         <div class="cp-name">${n.tipoNovedad?('['+n.tipoNovedad+'] '):''}${n.descripcion}</div>
-        <div class="cp-meta">✅ ${n.accion}</div>
-        <div class="cp-meta">${fmtDateTime(n.ts)}${n.foto?' · 📷':''}</div>
+        ${n.resuelta ? `<div class="cp-meta">✅ ${n.accion} · resuelta en ${fmtDuracionMin(n.tsDetectada,n.tsResuelta)}</div>` : `<div class="cp-meta" style="color:var(--rojo);">⏳ Pendiente de resolver</div>`}
+        <div class="cp-meta">Detectada ${fmtDateTime(n.tsDetectada||n.ts)}${n.foto?' · 📷':''}</div>
+      </div>
+      <div class="cp-action">
+        <button type="button" class="btn-mark ${n.resuelta?'done':''}" data-idx="${i}">${n.resuelta?'Editar':'Marcar resuelta'}</button>
       </div>
     </div>
   `).join('');
 }
+document.getElementById('novedadesList').addEventListener('click', function(e){
+  const btn = e.target.closest('.btn-mark');
+  if(!btn) return;
+  abrirModalMarca({tipo:'novedad', idx: parseInt(btn.getAttribute('data-idx'),10)});
+});
 
 document.getElementById('checkpointList').addEventListener('click', function(e){
   const btn = e.target.closest('.btn-mark');
@@ -1177,14 +1193,28 @@ function abrirModalMarca(ctx){
     if(cp.nota) document.getElementById('modalNota').value = cp.nota;
     if(cp.foto){ modalFotoData = cp.foto; document.getElementById('modalFotoPreview').src = cp.foto; document.getElementById('modalFotoPreview').style.display='block'; }
   } else if(ctx.tipo==='novedad'){
-    document.getElementById('modalTitulo').textContent = '🔍 Reportar novedad';
-    document.getElementById('modalSub').textContent = gpsTxt;
+    const editando = ctx.idx!=null;
+    const n = editando ? rondinActivo.novedades[ctx.idx] : null;
+    document.getElementById('modalTitulo').textContent = editando ? ((n.resuelta?'Editar':'✅ Marcar como resuelta')+': '+n.descripcion) : '🔍 Reportar novedad';
+    document.getElementById('modalSub').textContent = editando
+      ? (n.resuelta ? ('Detectada '+fmtDateTime(n.tsDetectada)+' · resuelta '+fmtDateTime(n.tsResuelta)) : ('Detectada '+fmtDateTime(n.tsDetectada)+' · aún sin resolver — '+gpsTxt))
+      : gpsTxt;
     document.getElementById('modalTipoNovedadField').style.display = 'block';
     document.getElementById('modalDescField').style.display = 'block';
     document.getElementById('modalDescLabel').textContent = 'Novedad encontrada';
     document.getElementById('modalDescripcion').placeholder = 'Ej. Candado forzado en almacén 2';
-    document.getElementById('modalDescripcion').value = '';
     document.getElementById('modalAccionField').style.display = 'block';
+    if(editando){
+      document.getElementById('modalTipoNovedad').value = n.tipoNovedad||'';
+      document.getElementById('modalDescripcion').value = n.descripcion||'';
+      document.getElementById('modalAccion').value = n.accion||'';
+      document.getElementById('modalAccionLabel').textContent = n.resuelta ? 'Acción realizada' : 'Acción realizada (complétela para marcarla como resuelta)';
+      document.getElementById('modalNota').value = n.nota||'';
+      if(n.foto){ modalFotoData = n.foto; document.getElementById('modalFotoPreview').src = n.foto; document.getElementById('modalFotoPreview').style.display='block'; }
+    } else {
+      document.getElementById('modalDescripcion').value = '';
+      document.getElementById('modalAccionLabel').textContent = 'Acción realizada (si ya se resolvió)';
+    }
   } else {
     document.getElementById('modalTitulo').textContent = 'Agregar parada libre';
     document.getElementById('modalSub').textContent = gpsTxt;
@@ -1235,9 +1265,20 @@ document.getElementById('btnConfirmarMarca').addEventListener('click', function(
     const accion = document.getElementById('modalAccion').value.trim();
     if(!tipoNovedad){ msgEl.textContent = 'Seleccione el tipo de novedad.'; msgEl.className = 'form-msg err'; return; }
     if(!desc){ msgEl.textContent = 'Describa la novedad encontrada.'; msgEl.className = 'form-msg err'; return; }
-    if(!accion){ msgEl.textContent = 'Escriba la acción realizada — es indispensable para medir la efectividad del rondín.'; msgEl.className = 'form-msg err'; return; }
-    rondinActivo.novedades.push({ tipoNovedad, descripcion: desc, accion, lat:pos.lat, lng:pos.lng, acc:pos.acc, ts, foto: modalFotoData, nota });
-    if(pos.lat!=null) rondinActivo.ruta.push(Object.assign({tipo:'novedad'}, pos));
+    if(modalContexto.idx!=null){
+      // marcar como resuelta una novedad ya reportada
+      const n = rondinActivo.novedades[modalContexto.idx];
+      n.tipoNovedad = tipoNovedad; n.descripcion = desc; n.foto = modalFotoData; n.nota = nota;
+      if(accion && !n.resuelta){ n.accion = accion; n.resuelta = true; n.tsResuelta = ts; }
+      else if(accion){ n.accion = accion; }
+    } else {
+      rondinActivo.novedades.push({
+        tipoNovedad, descripcion: desc, accion: accion||'', lat:pos.lat, lng:pos.lng, acc:pos.acc,
+        ts, tsDetectada: ts, resuelta: !!accion, tsResuelta: accion ? ts : null,
+        foto: modalFotoData, nota
+      });
+      if(pos.lat!=null) rondinActivo.ruta.push(Object.assign({tipo:'novedad'}, pos));
+    }
   } else {
     const desc = document.getElementById('modalDescripcion').value.trim();
     if(!desc){
@@ -1293,7 +1334,9 @@ document.getElementById('btnIniciarRondin').addEventListener('click', function()
 });
 
 document.getElementById('btnFinalizarRondin').addEventListener('click', function(){
-  if(!confirm('¿Finalizar el rondín? Podrá exportarlo y guardarlo en el resumen final.')) return;
+  const pendientes = rondinActivo.novedades.filter(n=>!n.resuelta).length;
+  const avisoPendientes = pendientes>0 ? ('\n\n⚠️ Hay '+pendientes+' novedad(es) sin resolver — se guardarán como pendientes; puede seguir dándoles seguimiento en un rondín posterior.') : '';
+  if(!confirm('¿Finalizar el rondín? Podrá exportarlo y guardarlo en el resumen final.'+avisoPendientes)) return;
   rondinActivo.fin = Date.now();
   if(lastPosition) rondinActivo.ruta.push(Object.assign({tipo:'fin'}, lastPosition));
   clearInterval(timerInterval);
@@ -1327,7 +1370,8 @@ async function mostrarResumen(rondin){
     filas.push({tipo:'Parada libre', nombre:p.descripcion, ts:p.ts, foto:p.foto, nota:p.nota, marcado:true});
   });
   rondin.novedades.forEach(n=>{
-    filas.push({tipo:'🔍 '+(n.tipoNovedad||'Novedad')+' — acción: '+n.accion, nombre:n.descripcion, ts:n.ts, foto:n.foto, nota:n.nota, marcado:true});
+    const estadoTxt = n.resuelta ? ('resuelta en '+fmtDuracionMin(n.tsDetectada,n.tsResuelta)+' — acción: '+n.accion) : 'PENDIENTE DE RESOLVER';
+    filas.push({tipo:'🔍 '+(n.tipoNovedad||'Novedad')+' — '+estadoTxt, nombre:n.descripcion, ts:n.tsDetectada||n.ts, foto:n.foto, nota:n.nota, marcado:true});
   });
   document.getElementById('resumenDetalle').innerHTML = filas.map(f=>`
     <div class="free-stop-item" style="margin-bottom:10px;${f.marcado?'':'opacity:.55;'}">

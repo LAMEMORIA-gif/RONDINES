@@ -495,6 +495,58 @@ footer.note b{color:var(--muted);}
     </div>
   </div>
 
+  <div class="add-panel" id="panelGeocerca">
+    <div class="add-panel-head" id="panelGeocercaHead">
+      <h2>📍 Configurar geocerca por campo</h2>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span class="hint" id="geocercaHint">0 geocercas configuradas</span>
+        <span class="chev">▾</span>
+      </div>
+    </div>
+    <div class="add-panel-body">
+      <div style="padding:16px 18px;">
+        <div style="color:var(--muted);font-size:12.5px;margin-bottom:12px;">
+          Defina el centro y el radio real del predio de cada campo, para que el panel marque si un rondín se
+          registró <b>físicamente dentro del sitio</b> o si sus coordenadas GPS caen fuera — esto le da respaldo
+          ante el cliente de que los recorridos son reales, no marcados desde otro lugar. Si no sabe las
+          coordenadas exactas, use "Sugerir desde rondines registrados", que calcula un centro aproximado a
+          partir de los rondines que ya tiene importados de esa área.
+        </div>
+
+        <div class="field-inline" style="max-width:360px;">
+          <label>Área / Campo a configurar</label>
+          <input type="text" id="inAreaGeocerca" list="dlAreaGeocerca" placeholder="Ej. Campo Palomas">
+          <datalist id="dlAreaGeocerca"></datalist>
+        </div>
+        <div class="area-chip-list" id="areaChipListGeocerca"></div>
+
+        <div id="geocercaBody" style="display:none;">
+          <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+            <div class="field-inline" style="max-width:180px;">
+              <label>Latitud del centro</label>
+              <input type="number" id="inGeoLat" step="0.000001" placeholder="Ej. 22.156800">
+            </div>
+            <div class="field-inline" style="max-width:180px;">
+              <label>Longitud del centro</label>
+              <input type="number" id="inGeoLng" step="0.000001" placeholder="Ej. -100.984200">
+            </div>
+            <div class="field-inline" style="max-width:140px;">
+              <label>Radio (metros)</label>
+              <input type="number" id="inGeoRadio" min="10" step="10" placeholder="Ej. 150" value="150">
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px;">
+            <button type="button" class="btn-secondary" id="btnSugerirGeocerca">📍 Sugerir desde rondines registrados</button>
+            <button type="button" class="btn-primary" id="btnGuardarGeocerca">Guardar geocerca</button>
+            <button type="button" class="del-btn" id="btnQuitarGeocerca" style="padding:9px 16px;">Quitar geocerca de esta área</button>
+          </div>
+          <div class="form-msg" id="geocercaMsg" style="margin-top:10px;"></div>
+        </div>
+        <div id="geocercaEmpty" style="color:var(--muted);font-size:12.5px;">Escriba o seleccione un Área/Campo arriba para configurar su geocerca.</div>
+      </div>
+    </div>
+  </div>
+
   <div class="filters">
     <div class="field">
       <label for="fGuardia">Guardia</label>
@@ -522,7 +574,20 @@ footer.note b{color:var(--muted);}
         <option value="Nocturno">Nocturno</option>
       </select>
     </div>
+    <div class="field">
+      <label for="fGeocerca">Geocerca</label>
+      <select id="fGeocerca">
+        <option value="TODOS">Todos</option>
+        <option value="DENTRO">Dentro del sitio</option>
+        <option value="FUERA">⚠️ Fuera del sitio</option>
+        <option value="SIN_DEFINIR">Sin geocerca definida</option>
+      </select>
+    </div>
     <button class="btn-reset" id="btnReset">Restablecer filtros</button>
+  </div>
+
+  <div style="display:flex;justify-content:flex-end;margin-bottom:14px;">
+    <button type="button" class="btn-primary" id="btnReporteEjecutivo">📄 Generar reporte ejecutivo (PDF)</button>
   </div>
 
   <div class="kpis" id="kpisRow"></div>
@@ -569,6 +634,12 @@ footer.note b{color:var(--muted);}
       <div class="desc">Qué tan seguido se repite cada tipo de novedad, dentro del filtro activo</div>
       <div class="chart-box tall"><canvas id="chartTiposNovedad"></canvas></div>
     </div>
+  </div>
+
+  <div class="panel" style="margin-top:22px;">
+    <h2>⏱ Tiempo de respuesta a novedades por guardia</h2>
+    <div class="desc">Minutos promedio entre que se detecta una novedad y se marca como resuelta · verde ≤30 min · amarillo ≤90 min · rojo &gt;90 min — solo considera novedades ya resueltas con ambos tiempos registrados</div>
+    <div class="chart-box tall"><canvas id="chartTiempoRespuesta"></canvas></div>
   </div>
 
   <div class="section-title" style="margin-top:22px;">
@@ -627,6 +698,29 @@ function generarQRDataURL(texto, cellSize){
   return qr.createDataURL(cellSize||6, cellSize?Math.round(cellSize*1.5):8);
 }
 const QR_PREFIX = 'RONDIN_CHECKPOINT::';
+
+// ---------- geocerca por campo (verifica que el rondín se haya hecho físicamente en el sitio) ----------
+const GEOCERCA_KEY = 'rondines_geocercas_v1';
+function loadGeocercas(){ try{ const raw = localStorage.getItem(GEOCERCA_KEY); return raw?JSON.parse(raw):{}; }catch(e){ return {}; } }
+function saveGeocercas(obj){ try{ localStorage.setItem(GEOCERCA_KEY, JSON.stringify(obj)); return true; }catch(e){ return false; } }
+function getGeocercaDeArea(area){
+  const todo = loadGeocercas();
+  const key = Object.keys(todo).find(k=>k.trim().toLowerCase()===String(area||'').trim().toLowerCase());
+  return key ? todo[key] : null;
+}
+function pctDentroDeGeocerca(rondin){
+  const geo = getGeocercaDeArea(rondin.area);
+  const pts = (rondin.ruta||[]).filter(p=>p.lat!=null);
+  if(!geo || pts.length===0) return null;
+  const dentro = pts.filter(p=> haversineKm({lat:geo.lat,lng:geo.lng}, p)*1000 <= geo.radioM).length;
+  return dentro/pts.length;
+}
+const UMBRAL_GEOCERCA = 0.8; // % de puntos GPS que deben caer dentro del radio para considerarse "dentro"
+function estadoGeocerca(rondin){
+  const pct = pctDentroDeGeocerca(rondin);
+  if(pct===null) return 'SIN_DEFINIR';
+  return pct>=UMBRAL_GEOCERCA ? 'DENTRO' : 'FUERA';
+}
 
 
 function roundRectPath(ctx,x,y,w,h,r){
@@ -876,6 +970,13 @@ function fmtDateTime(ts){
   const d = new Date(ts);
   return d.toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'})+' '+d.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
 }
+function fmtDuracionMin(mins){
+  if(mins==null || isNaN(mins)) return '—';
+  mins = Math.round(mins);
+  if(mins<60) return mins+' min';
+  const h = Math.floor(mins/60), m = mins%60;
+  return h+'h '+m+'min';
+}
 function fmtDateOnly(ts){
   if(!ts) return '—';
   return new Date(ts).toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'});
@@ -1008,10 +1109,12 @@ function applyFilters(){
   const area = document.getElementById('fArea').value;
   const cumplimiento = document.getElementById('fCumplimiento').value;
   const turno = document.getElementById('fTurno').value;
+  const geocerca = document.getElementById('fGeocerca').value;
   return ALL_RONDINES.filter(r=>{
     if(guardia!=='TODOS' && r.guardia!==guardia) return false;
     if(area!=='TODOS' && r.area!==area) return false;
     if(turno!=='TODOS' && r.turno!==turno) return false;
+    if(geocerca!=='TODOS' && estadoGeocerca(r)!==geocerca) return false;
     if(cumplimiento!=='TODOS'){
       const niv = nivelDeCumplimiento(r);
       if(cumplimiento==='COMPLETO' && niv!=='VERDE') return false;
@@ -1034,8 +1137,15 @@ function renderKpis(records){
   const marcadosTotal = sum(records.map(r=>(r.checkpoints||[]).filter(c=>c.marcado).length));
   const marcadosViaQR = sum(records.map(r=>(r.checkpoints||[]).filter(c=>c.marcado && c.viaQR).length));
   const pctQR = marcadosTotal>0 ? marcadosViaQR/marcadosTotal : 0;
-  const totalNovedades = sum(records.map(r=>(r.novedades||[]).length));
+  const todasNovedades = records.flatMap(r=>r.novedades||[]);
+  const totalNovedades = todasNovedades.length;
   const rondinesConNovedad = records.filter(r=>(r.novedades||[]).length>0).length;
+  const resueltas = todasNovedades.filter(n=>n.resuelta && n.tsDetectada && n.tsResuelta);
+  const pendientes = todasNovedades.filter(n=>!n.resuelta).length;
+  const tiemposRespuesta = resueltas.map(n=>(n.tsResuelta-n.tsDetectada)/60000);
+  const tiempoRespProm = tiemposRespuesta.length ? avg(tiemposRespuesta) : null;
+  const conGeocerca = records.filter(r=>estadoGeocerca(r)!=='SIN_DEFINIR');
+  const pctGeocercaDentro = conGeocerca.length ? conGeocerca.filter(r=>estadoGeocerca(r)==='DENTRO').length/conGeocerca.length : 0;
 
   document.getElementById('totalRondinesLabel').textContent = ALL_RONDINES.length;
   document.getElementById('totalGuardiasLabel').textContent = new Set(ALL_RONDINES.map(r=>r.guardia)).size;
@@ -1046,7 +1156,9 @@ function renderKpis(records){
     <div class="kpi"><div class="kpi-accentbar"></div><div class="label">Duración promedio</div><div class="value">${Math.round(avg(duraciones))} min</div><div class="sub">por rondín</div></div>
     <div class="kpi semaforo"><div class="kpi-accentbar"></div><div class="label">Cumplimiento de puntos</div><div class="value"><span class="dot ${cumplimientoProm>=1?'VERDE':(cumplimientoProm>0?'AMARILLO':'ROJO')}"></span>${fmtPct(cumplimientoProm)}</div><div class="sub">${conPuntos.length} rondines con puntos definidos</div></div>
     <div class="kpi"><div class="kpi-accentbar"></div><div class="label">Confirmado por QR</div><div class="value">${fmtPct(pctQR)}</div><div class="sub">${marcadosViaQR} de ${marcadosTotal} puntos marcados</div></div>
-    <div class="kpi"><div class="kpi-accentbar" style="background:var(--rojo);"></div><div class="label">Novedades encontradas</div><div class="value" style="${totalNovedades>0?'color:var(--rojo);':''}">${totalNovedades}</div><div class="sub">en ${rondinesConNovedad} de ${total} rondines · todas con acción registrada</div></div>
+    <div class="kpi"><div class="kpi-accentbar" style="background:var(--rojo);"></div><div class="label">Novedades encontradas</div><div class="value" style="${totalNovedades>0?'color:var(--rojo);':''}">${totalNovedades}</div><div class="sub">en ${rondinesConNovedad} de ${total} rondines${pendientes>0?(' · '+pendientes+' pendiente'+(pendientes===1?'':'s')):''}</div></div>
+    <div class="kpi semaforo"><div class="kpi-accentbar"></div><div class="label">⏱ Tiempo de respuesta</div><div class="value"><span class="dot ${tiempoRespProm==null?'':(tiempoRespProm<=30?'VERDE':(tiempoRespProm<=90?'AMARILLO':'ROJO'))}"></span>${tiempoRespProm==null?'—':fmtDuracionMin(tiempoRespProm)}</div><div class="sub">${resueltas.length} novedad(es) resuelta(s) con ambos tiempos registrados</div></div>
+    <div class="kpi semaforo"><div class="kpi-accentbar"></div><div class="label">📍 Dentro de geocerca</div><div class="value"><span class="dot ${conGeocerca.length===0?'':(pctGeocercaDentro>=0.9?'VERDE':(pctGeocercaDentro>=0.7?'AMARILLO':'ROJO'))}"></span>${conGeocerca.length===0?'—':fmtPct(pctGeocercaDentro)}</div><div class="sub">${conGeocerca.length} rondín(es) con geocerca definida en el filtro</div></div>
     <div class="kpi"><div class="kpi-accentbar"></div><div class="label">Evidencia fotográfica</div><div class="value">${totalFotos}</div><div class="sub">fotos en el filtro</div></div>
   `;
 }
@@ -1183,6 +1295,24 @@ function renderChartTiposNovedad(records){
   });
 }
 
+function renderChartTiempoRespuesta(records){
+  const map = {};
+  records.forEach(r=>{
+    (r.novedades||[]).forEach(n=>{
+      if(n.resuelta && n.tsDetectada && n.tsResuelta){
+        if(!map[r.guardia]) map[r.guardia] = [];
+        map[r.guardia].push((n.tsResuelta-n.tsDetectada)/60000);
+      }
+    });
+  });
+  const entries = Object.entries(map).map(([k,v])=>[k, avg(v)]).sort((a,b)=>a[1]-b[1]);
+  drawHBarChart(document.getElementById('chartTiempoRespuesta'), {
+    labels: entries.map(e=>e[0]), values: entries.map(e=>Math.round(e[1])),
+    colors: entries.map(e=> e[1]<=30?COLORS.VERDE:(e[1]<=90?COLORS.AMARILLO:COLORS.ROJO)),
+    xTitle:'minutos promedio para resolver una novedad', valueFmt:v=>fmtDuracionMin(v)
+  });
+}
+
 // ---------- lista de rondines ----------
 function renderRondinesList(records){
   const cont = document.getElementById('rondinesList');
@@ -1198,13 +1328,19 @@ function renderRondinesList(records){
     const totalCp = (r.checkpoints||[]).length;
     const marcados = (r.checkpoints||[]).filter(c=>c.marcado).length;
     const numNov = (r.novedades||[]).length;
+    const geoEstado = estadoGeocerca(r);
+    const geoBadge = geoEstado==='DENTRO' ? '<span class="status-pill" style="color:var(--verde);background:var(--verde-soft);">📍 Dentro</span>'
+      : geoEstado==='FUERA' ? '<span class="status-pill" style="color:var(--rojo);background:var(--rojo-soft);">⚠️ Fuera de geocerca</span>' : '';
     return `<div class="rondin-card ${niv==='GRIS'?'':niv}" data-id="${r.id}">
       <div class="rc-head">
         <div>
           <div class="rc-title">${r.guardia} · ${r.area}${r.turno?' · '+r.turno:''}</div>
           <div class="rc-sub">${fmtDateTime(r.inicio)}</div>
         </div>
-        <span class="tag ${niv==='GRIS'?'':niv}" style="${niv==='GRIS'?'color:var(--muted);background:var(--panel-alt);':''}">${niv==='GRIS'?'SIN PUNTOS':(niv==='VERDE'?'COMPLETO':(niv==='AMARILLO'?'PARCIAL':'SIN MARCAR'))}</span>
+        <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;">
+          <span class="tag ${niv==='GRIS'?'':niv}" style="${niv==='GRIS'?'color:var(--muted);background:var(--panel-alt);':''}">${niv==='GRIS'?'SIN PUNTOS':(niv==='VERDE'?'COMPLETO':(niv==='AMARILLO'?'PARCIAL':'SIN MARCAR'))}</span>
+          ${geoBadge}
+        </div>
       </div>
       <div class="rc-stats">
         <div><b>${dur!=null?dur+' min':'—'}</b>duración</div>
@@ -1235,6 +1371,8 @@ function abrirDetalle(id){
   const totalCp = (r.checkpoints||[]).length;
   const marcados = (r.checkpoints||[]).filter(c=>c.marcado).length;
   const numNov = (r.novedades||[]).length;
+  const pctGeo = pctDentroDeGeocerca(r);
+  const geoEstado = estadoGeocerca(r);
 
   document.getElementById('detTitulo').textContent = r.guardia+' · '+r.area;
   document.getElementById('detSub').textContent = (r.turno?r.turno+' · ':'')+fmtDateTime(r.inicio)+(r.fin?' a '+fmtDateTime(r.fin):' (sin finalizar)');
@@ -1243,6 +1381,7 @@ function abrirDetalle(id){
     <div class="kpi"><div class="kpi-accentbar"></div><div class="label">Distancia</div><div class="value">${dist.toFixed(2)} km</div></div>
     <div class="kpi"><div class="kpi-accentbar"></div><div class="label">Puntos de control</div><div class="value">${marcados}/${totalCp}</div></div>
     <div class="kpi"><div class="kpi-accentbar" style="background:var(--rojo);"></div><div class="label">Novedades</div><div class="value" style="${numNov>0?'color:var(--rojo);':''}">${numNov}</div></div>
+    <div class="kpi"><div class="kpi-accentbar" style="background:${geoEstado==='DENTRO'?'var(--verde)':(geoEstado==='FUERA'?'var(--rojo)':'var(--muted)')};"></div><div class="label">📍 Geocerca</div><div class="value" style="${geoEstado==='FUERA'?'color:var(--rojo);':''}">${pctGeo==null?'Sin definir':fmtPct(pctGeo)}</div></div>
   `;
 
   drawRouteCanvas(r);
@@ -1255,7 +1394,8 @@ function abrirDetalle(id){
     filas.push({nombre:p.descripcion, tipo:'Parada libre', ts:p.ts, foto:p.foto, nota:p.nota});
   });
   (r.novedades||[]).forEach(n=>{
-    filas.push({nombre:n.descripcion, tipo:'🔍 '+(n.tipoNovedad||'Novedad')+' — acción: '+n.accion, ts:n.ts, foto:n.foto, nota:n.nota});
+    const estadoTxt = n.resuelta ? ('resuelta en '+fmtDuracionMin((n.tsResuelta-n.tsDetectada)/60000)+' — acción: '+n.accion) : '⏳ PENDIENTE DE RESOLVER';
+    filas.push({nombre:n.descripcion, tipo:'🔍 '+(n.tipoNovedad||'Novedad')+' — '+estadoTxt, ts:n.tsDetectada||n.ts, foto:n.foto, nota:n.nota});
   });
   document.getElementById('detThumbs').innerHTML = filas.map(f=>`
     <div>
@@ -1338,6 +1478,7 @@ function renderAll(){
   safe(()=>renderChartNovedades(records), 'gráfico de novedades');
   safe(()=>renderChartTurno(records), 'gráfico de turno');
   safe(()=>renderChartTiposNovedad(records), 'gráfico de tipos de novedad');
+  safe(()=>renderChartTiempoRespuesta(records), 'gráfico de tiempo de respuesta');
   safe(()=>renderChartSemanalPorCampo(records), 'comparativo semanal por campo');
   safe(()=>renderChartSemanalNovedades(records), 'semanal de áreas y novedades');
   safe(()=>renderRondinesList(records), 'lista de rondines');
@@ -1347,6 +1488,7 @@ async function cargarYRenderizar(){
   refreshFilterLists();
   renderAll();
   safe(()=>renderAreaChips(), 'chips de áreas configuradas');
+  safe(()=>renderAreaChipsGeocerca(), 'chips de geocercas configuradas');
 }
 
 // ---------- administración de puntos de control por campo (para exportar a los guardias) ----------
@@ -1403,6 +1545,92 @@ function seleccionarAreaAdmin(area){
 document.getElementById('inAreaAdmin').addEventListener('input', function(){
   seleccionarAreaAdmin(this.value);
 });
+
+// ---------- administración de geocerca por campo ----------
+let areaGeocercaSeleccionada = '';
+function renderAreaChipsGeocerca(){
+  const todo = loadGeocercas();
+  const areas = Object.keys(todo).sort();
+  document.getElementById('geocercaHint').textContent = areas.length+' geocerca'+(areas.length===1?'':'s')+' configurada'+(areas.length===1?'':'s');
+  const areasVistas = Array.from(new Set([...areas, ...ALL_RONDINES.map(r=>r.area)])).sort();
+  document.getElementById('dlAreaGeocerca').innerHTML = areasVistas.map(a=>`<option value="${a}">`).join('');
+  document.getElementById('areaChipListGeocerca').innerHTML = areas.map(a=>`
+    <span class="area-chip ${a===areaGeocercaSeleccionada?'active':''}" data-area="${a}">${a} (${todo[a].radioM} m)</span>
+  `).join('');
+}
+document.getElementById('areaChipListGeocerca').addEventListener('click', function(e){
+  const chip = e.target.closest('.area-chip');
+  if(!chip) return;
+  document.getElementById('inAreaGeocerca').value = chip.getAttribute('data-area');
+  seleccionarAreaGeocerca(chip.getAttribute('data-area'));
+});
+function seleccionarAreaGeocerca(area){
+  areaGeocercaSeleccionada = area.trim();
+  const bodyEl = document.getElementById('geocercaBody');
+  const emptyEl = document.getElementById('geocercaEmpty');
+  const msgEl = document.getElementById('geocercaMsg');
+  msgEl.className = 'form-msg';
+  if(!areaGeocercaSeleccionada){ bodyEl.style.display='none'; emptyEl.style.display='block'; renderAreaChipsGeocerca(); return; }
+  bodyEl.style.display = 'block'; emptyEl.style.display = 'none';
+  const existente = getGeocercaDeArea(areaGeocercaSeleccionada);
+  document.getElementById('inGeoLat').value = existente ? existente.lat : '';
+  document.getElementById('inGeoLng').value = existente ? existente.lng : '';
+  document.getElementById('inGeoRadio').value = existente ? existente.radioM : 150;
+  renderAreaChipsGeocerca();
+}
+document.getElementById('inAreaGeocerca').addEventListener('input', function(){ seleccionarAreaGeocerca(this.value); });
+
+document.getElementById('btnSugerirGeocerca').addEventListener('click', function(){
+  const msgEl = document.getElementById('geocercaMsg');
+  if(!areaGeocercaSeleccionada) return;
+  const pts = ALL_RONDINES.filter(r=>r.area===areaGeocercaSeleccionada).flatMap(r=>(r.ruta||[]).filter(p=>p.lat!=null));
+  if(pts.length===0){
+    msgEl.textContent = 'No hay rondines importados de esta área todavía para sugerir un centro — captúrelo manualmente.';
+    msgEl.className = 'form-msg err';
+    return;
+  }
+  const lat = avg(pts.map(p=>p.lat));
+  const lng = avg(pts.map(p=>p.lng));
+  document.getElementById('inGeoLat').value = lat.toFixed(6);
+  document.getElementById('inGeoLng').value = lng.toFixed(6);
+  msgEl.textContent = 'Centro sugerido a partir de '+pts.length+' puntos GPS de '+new Set(ALL_RONDINES.filter(r=>r.area===areaGeocercaSeleccionada).map(r=>r.id)).size+' rondín(es). Ajuste el radio si hace falta y guarde.';
+  msgEl.className = 'form-msg ok';
+});
+
+document.getElementById('btnGuardarGeocerca').addEventListener('click', function(){
+  const msgEl = document.getElementById('geocercaMsg');
+  const lat = parseFloat(document.getElementById('inGeoLat').value);
+  const lng = parseFloat(document.getElementById('inGeoLng').value);
+  const radioM = parseInt(document.getElementById('inGeoRadio').value, 10);
+  if(!areaGeocercaSeleccionada || isNaN(lat) || isNaN(lng) || !radioM || radioM<10){
+    msgEl.textContent = 'Complete latitud, longitud y un radio válido (mínimo 10 m).';
+    msgEl.className = 'form-msg err';
+    return;
+  }
+  const todo = loadGeocercas();
+  todo[areaGeocercaSeleccionada] = {lat, lng, radioM};
+  saveGeocercas(todo);
+  renderAreaChipsGeocerca();
+  renderAll();
+  msgEl.textContent = 'Geocerca guardada para "'+areaGeocercaSeleccionada+'".';
+  msgEl.className = 'form-msg ok';
+});
+document.getElementById('btnQuitarGeocerca').addEventListener('click', function(){
+  const msgEl = document.getElementById('geocercaMsg');
+  if(!areaGeocercaSeleccionada) return;
+  const todo = loadGeocercas();
+  if(!todo[areaGeocercaSeleccionada]){ msgEl.textContent = 'Esta área no tiene geocerca guardada.'; msgEl.className = 'form-msg err'; return; }
+  if(!confirm('¿Quitar la geocerca de "'+areaGeocercaSeleccionada+'"?')) return;
+  delete todo[areaGeocercaSeleccionada];
+  saveGeocercas(todo);
+  document.getElementById('inGeoLat').value=''; document.getElementById('inGeoLng').value=''; document.getElementById('inGeoRadio').value=150;
+  renderAreaChipsGeocerca();
+  renderAll();
+  msgEl.textContent = 'Geocerca eliminada.';
+  msgEl.className = 'form-msg ok';
+});
+const panelGeocerca = document.getElementById('panelGeocerca');
+document.getElementById('panelGeocercaHead').addEventListener('click', ()=>{ panelGeocerca.classList.toggle('open'); });
 
 function renderListaPuntosAdmin(){
   const todo = loadPuntosPorArea();
@@ -1507,13 +1735,141 @@ document.getElementById('fileImportPuntosAdmin').addEventListener('change', func
 renderAreaChips();
 seleccionarAreaAdmin('');
 
-['fGuardia','fArea','fCumplimiento','fTurno'].forEach(id=>{ document.getElementById(id).addEventListener('change', renderAll); });
+['fGuardia','fArea','fCumplimiento','fTurno','fGeocerca'].forEach(id=>{ document.getElementById(id).addEventListener('change', renderAll); });
 document.getElementById('btnReset').addEventListener('click', function(){
   document.getElementById('fGuardia').value = 'TODOS';
   document.getElementById('fArea').value = 'TODOS';
   document.getElementById('fCumplimiento').value = 'TODOS';
   document.getElementById('fTurno').value = 'TODOS';
+  document.getElementById('fGeocerca').value = 'TODOS';
   renderAll();
+});
+
+// ---------- reporte ejecutivo imprimible ----------
+document.getElementById('btnReporteEjecutivo').addEventListener('click', function(){
+  const records = applyFilters();
+  if(records.length===0){ alert('No hay rondines en el filtro activo para incluir en el reporte.'); return; }
+
+  const fechas = records.map(r=>r.inicio).sort((a,b)=>a-b);
+  const periodoTxt = fechas.length ? (fmtDateOnly(fechas[0])+' — '+fmtDateOnly(fechas[fechas.length-1])) : '—';
+  const filtrosActivos = [];
+  const fG = document.getElementById('fGuardia').value; if(fG!=='TODOS') filtrosActivos.push('Guardia: '+fG);
+  const fA = document.getElementById('fArea').value; if(fA!=='TODOS') filtrosActivos.push('Área: '+fA);
+  const fT = document.getElementById('fTurno').value; if(fT!=='TODOS') filtrosActivos.push('Turno: '+fT);
+  const fC = document.getElementById('fCumplimiento').value; if(fC!=='TODOS') filtrosActivos.push('Cumplimiento: '+fC);
+  const fGeo = document.getElementById('fGeocerca').value; if(fGeo!=='TODOS') filtrosActivos.push('Geocerca: '+fGeo);
+
+  const conPuntos = records.filter(r=>(r.checkpoints||[]).length>0);
+  const cumplimientoProm = conPuntos.length ? avg(conPuntos.map(r=>cumplimientoDe(r))) : 0;
+  const distanciaTotal = sum(records.map(r=>routeDistanceKm(r.ruta)));
+  const todasNovedades = records.flatMap(r=>r.novedades||[]);
+  const resueltas = todasNovedades.filter(n=>n.resuelta && n.tsDetectada && n.tsResuelta);
+  const pendientes = todasNovedades.filter(n=>!n.resuelta);
+  const tiempoRespProm = resueltas.length ? avg(resueltas.map(n=>(n.tsResuelta-n.tsDetectada)/60000)) : null;
+  const conGeo = records.filter(r=>estadoGeocerca(r)!=='SIN_DEFINIR');
+  const pctGeoDentro = conGeo.length ? conGeo.filter(r=>estadoGeocerca(r)==='DENTRO').length/conGeo.length : null;
+
+  const porGuardia = groupByGuardia(records).sort((a,b)=>b.count-a.count);
+  const porCampo = {};
+  records.forEach(r=>{
+    if(!porCampo[r.area]) porCampo[r.area] = {count:0, cumplArr:[], geoOk:0, geoTotal:0};
+    const p = porCampo[r.area];
+    p.count++;
+    const c = cumplimientoDe(r); if(c!==null) p.cumplArr.push(c);
+    const ge = estadoGeocerca(r);
+    if(ge!=='SIN_DEFINIR'){ p.geoTotal++; if(ge==='DENTRO') p.geoOk++; }
+  });
+  const tiposNovedad = {};
+  todasNovedades.forEach(n=>{ const t=n.tipoNovedad||'Sin tipificar'; tiposNovedad[t]=(tiposNovedad[t]||0)+1; });
+  const tiposNovedadOrdenados = Object.entries(tiposNovedad).sort((a,b)=>b[1]-a[1]);
+
+  const filas_guardia = porGuardia.map(g=>`
+    <tr>
+      <td>${g.key}</td><td>${g.count}</td>
+      <td>${g.avgCumpl!=null ? fmtPct(g.avgCumpl) : '—'}</td>
+      <td>${g.avgDist.toFixed(2)} km</td>
+      <td>${Math.round(g.avgDur)||'—'} min</td>
+      <td>${g.novedades}</td>
+    </tr>`).join('');
+
+  const filas_campo = Object.entries(porCampo).map(([area,p])=>`
+    <tr>
+      <td>${area}</td><td>${p.count}</td>
+      <td>${p.cumplArr.length ? fmtPct(avg(p.cumplArr)) : '—'}</td>
+      <td>${p.geoTotal ? fmtPct(p.geoOk/p.geoTotal) : 'Sin definir'}</td>
+    </tr>`).join('');
+
+  const filas_novedad = tiposNovedadOrdenados.map(([tipo,n])=>`<tr><td>${tipo}</td><td>${n}</td></tr>`).join('');
+
+  const reportHtml = `<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><title>Reporte Ejecutivo · Rondines de Seguridad</title>
+<style>
+  * { box-sizing:border-box; }
+  body{ font-family:'Segoe UI', Arial, sans-serif; color:#1a2230; margin:0; padding:36px 44px; background:#fff; }
+  h1{ font-size:22px; margin:0 0 4px; color:#10243f; }
+  .sub{ color:#5b6b7f; font-size:13px; margin-bottom:22px; }
+  .meta{ display:flex; gap:28px; flex-wrap:wrap; font-size:12.5px; color:#3a4656; margin-bottom:22px; padding-bottom:14px; border-bottom:2px solid #10243f; }
+  .meta b{ display:block; color:#10243f; font-size:11px; text-transform:uppercase; letter-spacing:.04em; margin-bottom:2px; }
+  .kpis{ display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:26px; }
+  .kpi{ border:1px solid #dde3ea; border-radius:8px; padding:12px 14px; }
+  .kpi .l{ font-size:10.5px; color:#6b7686; text-transform:uppercase; letter-spacing:.03em; }
+  .kpi .v{ font-size:22px; font-weight:700; color:#10243f; margin-top:3px; }
+  h2{ font-size:14.5px; color:#10243f; margin:26px 0 10px; padding-top:6px; border-top:1px solid #e5e9ee; }
+  table{ width:100%; border-collapse:collapse; font-size:12px; }
+  th{ text-align:left; background:#f3f5f8; color:#3a4656; font-weight:600; padding:7px 10px; border-bottom:2px solid #dde3ea; }
+  td{ padding:6px 10px; border-bottom:1px solid #eef1f4; color:#232d3b; }
+  tr:nth-child(even) td{ background:#fafbfc; }
+  .alerta{ color:#b3261e; font-weight:600; }
+  .ok{ color:#1e7e34; font-weight:600; }
+  footer{ margin-top:32px; padding-top:12px; border-top:1px solid #e5e9ee; font-size:10.5px; color:#8b95a6; display:flex; justify-content:space-between; }
+  @media print{ body{ padding:18px 26px; } .kpis{ grid-template-columns:repeat(4,1fr); } }
+</style></head>
+<body>
+  <h1>🛡️ Reporte Ejecutivo — Rondines de Seguridad Patrimonial</h1>
+  <div class="sub">Generado el ${new Date().toLocaleString('es-MX',{dateStyle:'long',timeStyle:'short'})}</div>
+  <div class="meta">
+    <div><b>Periodo cubierto</b>${periodoTxt}</div>
+    <div><b>Rondines incluidos</b>${records.length}</div>
+    <div><b>Guardias distintos</b>${new Set(records.map(r=>r.guardia)).size}</div>
+    <div><b>Campos distintos</b>${new Set(records.map(r=>r.area)).size}</div>
+    ${filtrosActivos.length ? `<div><b>Filtros aplicados</b>${filtrosActivos.join(' · ')}</div>` : ''}
+  </div>
+
+  <div class="kpis">
+    <div class="kpi"><div class="l">Cumplimiento de puntos</div><div class="v">${fmtPct(cumplimientoProm)}</div></div>
+    <div class="kpi"><div class="l">Distancia total recorrida</div><div class="v">${distanciaTotal.toFixed(1)} km</div></div>
+    <div class="kpi"><div class="l">Tiempo de respuesta prom.</div><div class="v">${tiempoRespProm==null?'—':fmtDuracionMin(tiempoRespProm)}</div></div>
+    <div class="kpi"><div class="l">Dentro de geocerca</div><div class="v">${pctGeoDentro==null?'—':fmtPct(pctGeoDentro)}</div></div>
+    <div class="kpi"><div class="l">Novedades encontradas</div><div class="v">${todasNovedades.length}</div></div>
+    <div class="kpi"><div class="l">Novedades resueltas</div><div class="v">${resueltas.length}</div></div>
+    <div class="kpi"><div class="l">Novedades pendientes</div><div class="v ${pendientes.length>0?'alerta':'ok'}">${pendientes.length}</div></div>
+    <div class="kpi"><div class="l">Total de rondines</div><div class="v">${records.length}</div></div>
+  </div>
+
+  <h2>Desempeño por guardia</h2>
+  <table><thead><tr><th>Guardia</th><th>Rondines</th><th>% Cumplimiento</th><th>Distancia prom.</th><th>Duración prom.</th><th>Novedades</th></tr></thead>
+  <tbody>${filas_guardia}</tbody></table>
+
+  <h2>Resumen por campo</h2>
+  <table><thead><tr><th>Campo</th><th>Rondines</th><th>% Cumplimiento</th><th>% Dentro de geocerca</th></tr></thead>
+  <tbody>${filas_campo}</tbody></table>
+
+  ${tiposNovedadOrdenados.length ? `<h2>Novedades por tipo</h2>
+  <table><thead><tr><th>Tipo de novedad</th><th>Cantidad</th></tr></thead>
+  <tbody>${filas_novedad}</tbody></table>` : ''}
+
+  <footer>
+    <span>Reporte generado automáticamente por el sistema de Rondines de Seguridad — datos capturados en campo, sin conexión a internet.</span>
+    <span>Página 1</span>
+  </footer>
+
+  <script>window.onload = function(){ setTimeout(function(){ window.print(); }, 350); };</script>
+</body></html>`;
+
+  const w = window.open('', '_blank');
+  if(!w){ alert('El navegador bloqueó la ventana del reporte. Permita ventanas emergentes para este sitio e intente de nuevo.'); return; }
+  w.document.write(reportHtml);
+  w.document.close();
 });
 
 cargarYRenderizar();
