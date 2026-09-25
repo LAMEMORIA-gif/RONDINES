@@ -564,8 +564,12 @@ footer.note b{color:var(--muted);}
         </div>
         <div class="field-inline">
           <label>Foto de identificación oficial</label>
-          <label class="camera-btn" for="inFotoID">📷 Tomar foto o 🖼️ elegir de la galería</label>
-          <input type="file" id="inFotoID" accept="image/*" style="display:none;">
+          <div style="display:flex;gap:8px;">
+            <label class="camera-btn" for="inFotoID" style="flex:1;">📷 Tomar foto</label>
+            <label class="camera-btn" for="inFotoIDGaleria" style="flex:1;">🖼️ Elegir de galería</label>
+          </div>
+          <input type="file" id="inFotoID" accept="image/*" capture="environment" style="display:none;">
+          <input type="file" id="inFotoIDGaleria" accept="image/*" style="display:none;">
           <img id="fotoIDPreview" class="photo-preview" style="display:none;">
         </div>
         <div class="field-inline">
@@ -964,10 +968,9 @@ document.getElementById('pendientesList').addEventListener('click', async functi
   }
 });
 
-document.getElementById('inFotoID').addEventListener('change', async function(e){
-  const file = e.target.files[0];
-  if(!file) return;
+async function procesarFotoID(file){
   const msgEl = document.getElementById('formIngresoMsg');
+  if(!file) return;
   msgEl.textContent = 'Procesando foto…'; msgEl.className = 'form-msg ok';
   try{
     modalFotoIDData = await compressImage(file, 900, 0.6);
@@ -977,7 +980,9 @@ document.getElementById('inFotoID').addEventListener('change', async function(e)
   } catch(err){
     msgEl.textContent = 'No se pudo procesar la foto.'; msgEl.className = 'form-msg err';
   }
-});
+}
+document.getElementById('inFotoID').addEventListener('change', function(e){ procesarFotoID(e.target.files[0]); });
+document.getElementById('inFotoIDGaleria').addEventListener('change', function(e){ procesarFotoID(e.target.files[0]); });
 
 document.getElementById('formIngreso').addEventListener('submit', async function(e){
   e.preventDefault();
