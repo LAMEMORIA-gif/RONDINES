@@ -81,12 +81,13 @@ h1{
 }
 .field{display:flex;flex-direction:column;gap:5px;min-width:150px;}
 .field label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;}
-select,input[type=text]{
+select,input[type=text],input[type=date]{
   background:var(--panel-alt);border:1px solid var(--border);color:var(--text);
   padding:8px 10px;border-radius:7px;font-size:13.5px;font-family:inherit;
   outline:none;
 }
 select:focus,input:focus{border-color:var(--accent);}
+input[type=date]::-webkit-calendar-picker-indicator{filter:invert(.75);cursor:pointer;}
 .field.week-range{flex-direction:row;align-items:flex-end;gap:8px;}
 .field.week-range .inner{display:flex;flex-direction:column;gap:5px;}
 input[type=number]{
@@ -562,6 +563,10 @@ footer.note b{color:var(--muted);}
       <select id="fArea"><option value="TODOS">Todas las áreas</option></select>
     </div>
     <div class="field">
+      <label for="fFecha">Día específico</label>
+      <input type="date" id="fFecha">
+    </div>
+    <div class="field">
       <label for="fCumplimiento">Cumplimiento</label>
       <select id="fCumplimiento">
         <option value="TODOS">Todos</option>
@@ -589,6 +594,12 @@ footer.note b{color:var(--muted);}
       </select>
     </div>
     <button class="btn-reset" id="btnReset">Restablecer filtros</button>
+  </div>
+
+  <div class="alert-banner hidden" id="alertBannerFaltantes">
+    <h2>⚠️ Rondines no realizados — últimos <span id="alertVentanaDias">7</span> días con datos</h2>
+    <div class="desc">Áreas y turnos que normalmente se recorren, pero que no tienen ningún rondín registrado ese día. Cada hueco es un periodo sin vigilancia comprobada — vea el riesgo específico en cada tarjeta.</div>
+    <div class="alert-list" id="alertListFaltantes"></div>
   </div>
 
   <div style="display:flex;justify-content:flex-end;margin-bottom:14px;">
@@ -986,6 +997,13 @@ function fmtDateOnly(ts){
   if(!ts) return '—';
   return new Date(ts).toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'});
 }
+function dateKeyLocal(ts){
+  const d = new Date(ts);
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const day = String(d.getDate()).padStart(2,'0');
+  return y+'-'+m+'-'+day;
+}
 function haversineKm(a, b){
   const R = 6371;
   const dLat = (b.lat-a.lat)*Math.PI/180;
@@ -1130,17 +1148,25 @@ function refreshFilterLists(){
   const areas = Array.from(new Set(ALL_RONDINES.map(r=>r.area))).sort();
   fillSelect('fGuardia', guardias, 'Todos los guardias');
   fillSelect('fArea', areas, 'Todas las áreas');
+  const fechaInput = document.getElementById('fFecha');
+  if(ALL_RONDINES.length){
+    const fechas = ALL_RONDINES.map(r=>dateKeyLocal(r.inicio)).sort();
+    fechaInput.min = fechas[0];
+    fechaInput.max = fechas[fechas.length-1];
+  }
 }
 
 function applyFilters(){
   const guardia = document.getElementById('fGuardia').value;
   const area = document.getElementById('fArea').value;
+  const fecha = document.getElementById('fFecha').value;
   const cumplimiento = document.getElementById('fCumplimiento').value;
   const turno = document.getElementById('fTurno').value;
   const geocerca = document.getElementById('fGeocerca').value;
   return ALL_RONDINES.filter(r=>{
     if(guardia!=='TODOS' && r.guardia!==guardia) return false;
     if(area!=='TODOS' && r.area!==area) return false;
+    if(fecha && dateKeyLocal(r.inicio)!==fecha) return false;
     if(turno!=='TODOS' && r.turno!==turno) return false;
     if(geocerca!=='TODOS' && estadoGeocerca(r)!==geocerca) return false;
     if(cumplimiento!=='TODOS'){
@@ -1151,6 +1177,77 @@ function applyFilters(){
     }
     return true;
   });
+}
+
+// ---------- alertas de rondines faltantes (riesgo por omisión) ----------
+const VENTANA_DIAS_ALERTA = 7;
+const MIN_OCURRENCIAS_COMBO_ESPERADO = 2; // veces que un área+turno debe repetirse en todo el histórico para considerarse cobertura normal esperada
+
+function riesgoDeHueco(turno){
+  if(turno==='Nocturno') return 'Sin vigilancia nocturna comprobada: mayor exposición a robo de cosecha, combustible o equipo, sin evidencia fotográfica del área durante la noche.';
+  if(turno==='Vespertino') return 'Sin recorrido registrado en el turno vespertino: no hay evidencia del estado del área en ese horario ante un posible incidente.';
+  if(turno==='Matutino') return 'Sin recorrido registrado en el turno matutino: no hay evidencia del estado del área al inicio de operaciones.';
+  return 'Sin rondín registrado en este turno: no hay evidencia del estado del área en ese periodo, lo que debilita cualquier reclamo ante el cliente o el seguro si ocurre un incidente.';
+}
+
+function calcularCoberturaYHuecos(){
+  if(!ALL_RONDINES.length) return {pct:null, huecos:[], dias:[], combosEsperados:[]};
+  const conteoCombo = {};
+  ALL_RONDINES.forEach(r=>{
+    const key = r.area+'||'+r.turno;
+    conteoCombo[key] = (conteoCombo[key]||0)+1;
+  });
+  const combosEsperados = Object.keys(conteoCombo).filter(k=>conteoCombo[k]>=MIN_OCURRENCIAS_COMBO_ESPERADO)
+    .map(k=>{ const [area,turno] = k.split('||'); return {area,turno}; });
+  if(!combosEsperados.length) return {pct:null, huecos:[], dias:[], combosEsperados:[]};
+
+  const fechaMasReciente = ALL_RONDINES.reduce((max,r)=> r.inicio>max ? r.inicio : max, 0);
+  const dias = [];
+  for(let i=VENTANA_DIAS_ALERTA-1; i>=0; i--){
+    dias.push(dateKeyLocal(fechaMasReciente - i*86400000));
+  }
+
+  const cubiertos = new Set();
+  ALL_RONDINES.forEach(r=>{
+    const dia = dateKeyLocal(r.inicio);
+    if(dias.includes(dia)) cubiertos.add(dia+'||'+r.area+'||'+r.turno);
+  });
+
+  const huecos = [];
+  dias.forEach(dia=>{
+    combosEsperados.forEach(({area,turno})=>{
+      if(!cubiertos.has(dia+'||'+area+'||'+turno)){
+        huecos.push({dia, area, turno});
+      }
+    });
+  });
+
+  const totalCeldas = dias.length * combosEsperados.length;
+  const pct = totalCeldas>0 ? 1-(huecos.length/totalCeldas) : null;
+  huecos.sort((a,b)=> b.dia.localeCompare(a.dia) || a.area.localeCompare(b.area));
+  return {pct, huecos, dias, combosEsperados};
+}
+
+function renderAlertaFaltantes(){
+  const {pct, huecos} = calcularCoberturaYHuecos();
+  const banner = document.getElementById('alertBannerFaltantes');
+  const lista = document.getElementById('alertListFaltantes');
+  if(!banner || !lista) return;
+  document.getElementById('alertVentanaDias').textContent = VENTANA_DIAS_ALERTA;
+  if(!huecos.length){
+    banner.classList.add('hidden');
+    lista.innerHTML = '';
+    return;
+  }
+  banner.classList.remove('hidden');
+  const MAX_MOSTRAR = 24;
+  lista.innerHTML = huecos.slice(0, MAX_MOSTRAR).map(h=>`
+    <div class="alert-item">
+      <div class="name">${h.area} · ${h.turno}</div>
+      <div class="loc">${fmtDateOnly(new Date(h.dia+'T00:00:00').getTime())}</div>
+      <div class="accion">${riesgoDeHueco(h.turno)}</div>
+    </div>
+  `).join('') + (huecos.length>MAX_MOSTRAR ? `<div class="alert-item" style="display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12.5px;">+${huecos.length-MAX_MOSTRAR} hueco(s) más en estos ${VENTANA_DIAS_ALERTA} días</div>` : '');
 }
 
 // ---------- KPIs ----------
@@ -1174,11 +1271,13 @@ function renderKpis(records){
   const tiempoRespProm = tiemposRespuesta.length ? avg(tiemposRespuesta) : null;
   const conGeocerca = records.filter(r=>estadoGeocerca(r)!=='SIN_DEFINIR');
   const pctGeocercaDentro = conGeocerca.length ? conGeocerca.filter(r=>estadoGeocerca(r)==='DENTRO').length/conGeocerca.length : 0;
+  const {pct: pctCobertura, huecos: huecosCobertura} = calcularCoberturaYHuecos();
 
   document.getElementById('totalRondinesLabel').textContent = ALL_RONDINES.length;
   document.getElementById('totalGuardiasLabel').textContent = new Set(ALL_RONDINES.map(r=>r.guardia)).size;
 
   document.getElementById('kpisRow').innerHTML = `
+    <div class="kpi semaforo"><div class="kpi-accentbar"></div><div class="label">% Cobertura de rondines (últimos ${VENTANA_DIAS_ALERTA} días)</div><div class="value"><span class="dot ${pctCobertura==null?'':(pctCobertura>=0.95?'VERDE':(pctCobertura>=0.8?'AMARILLO':'ROJO'))}"></span>${pctCobertura==null?'—':fmtPct(pctCobertura)}</div><div class="sub">${huecosCobertura.length===0?'sin huecos detectados':huecosCobertura.length+' hueco(s) sin rondín'}</div></div>
     <div class="kpi"><div class="kpi-accentbar"></div><div class="label">Rondines (filtro)</div><div class="value">${total}</div><div class="sub">${guardiasDistintos} guardia${guardiasDistintos===1?'':'s'} distintos</div></div>
     <div class="kpi"><div class="kpi-accentbar"></div><div class="label">Distancia promedio</div><div class="value">${avg(distancias).toFixed(2)} km</div><div class="sub">por rondín</div></div>
     <div class="kpi"><div class="kpi-accentbar"></div><div class="label">Duración promedio</div><div class="value">${Math.round(avg(duraciones))} min</div><div class="sub">por rondín</div></div>
@@ -1500,6 +1599,7 @@ function drawRouteCanvas(rondin){
 function safe(fn,label){ try{ fn(); }catch(e){ console.error('Error en '+label+':', e); } }
 function renderAll(){
   const records = applyFilters();
+  safe(()=>renderAlertaFaltantes(), 'alerta de rondines faltantes');
   safe(()=>renderKpis(records), 'KPIs');
   safe(()=>renderChartGuardia(records), 'gráfico por guardia');
   safe(()=>renderChartCumplimiento(records), 'gráfico de cumplimiento');
@@ -1763,10 +1863,11 @@ document.getElementById('fileImportPuntosAdmin').addEventListener('change', func
 renderAreaChips();
 seleccionarAreaAdmin('');
 
-['fGuardia','fArea','fCumplimiento','fTurno','fGeocerca'].forEach(id=>{ document.getElementById(id).addEventListener('change', renderAll); });
+['fGuardia','fArea','fCumplimiento','fTurno','fGeocerca','fFecha'].forEach(id=>{ document.getElementById(id).addEventListener('change', renderAll); });
 document.getElementById('btnReset').addEventListener('click', function(){
   document.getElementById('fGuardia').value = 'TODOS';
   document.getElementById('fArea').value = 'TODOS';
+  document.getElementById('fFecha').value = '';
   document.getElementById('fCumplimiento').value = 'TODOS';
   document.getElementById('fTurno').value = 'TODOS';
   document.getElementById('fGeocerca').value = 'TODOS';
@@ -1783,6 +1884,7 @@ document.getElementById('btnReporteEjecutivo').addEventListener('click', functio
   const filtrosActivos = [];
   const fG = document.getElementById('fGuardia').value; if(fG!=='TODOS') filtrosActivos.push('Guardia: '+fG);
   const fA = document.getElementById('fArea').value; if(fA!=='TODOS') filtrosActivos.push('Área: '+fA);
+  const fFec = document.getElementById('fFecha').value; if(fFec) filtrosActivos.push('Día: '+fFec);
   const fT = document.getElementById('fTurno').value; if(fT!=='TODOS') filtrosActivos.push('Turno: '+fT);
   const fC = document.getElementById('fCumplimiento').value; if(fC!=='TODOS') filtrosActivos.push('Cumplimiento: '+fC);
   const fGeo = document.getElementById('fGeocerca').value; if(fGeo!=='TODOS') filtrosActivos.push('Geocerca: '+fGeo);
