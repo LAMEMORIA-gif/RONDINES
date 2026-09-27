@@ -512,11 +512,31 @@ footer.note b{color:var(--muted);}
   <!-- ===================== PANTALLA: CONFIGURACIÓN (sin rondín activo) ===================== -->
   <div id="screenSetup">
 
+    <div class="timer-box" id="recordatorioBox">
+      <div>
+        <div class="time-label">Desde el último rondín registrado en este teléfono</div>
+        <div class="time" id="recordatorioTiempo" style="font-size:30px;">—</div>
+      </div>
+      <div class="stat">
+        <b id="recordatorioEstadoTxt" style="font-size:14px;max-width:170px;">Sin rondines aún</b>
+        <span>estado</span>
+      </div>
+      <div class="field-inline" style="margin:0;min-width:160px;">
+        <label style="margin-bottom:2px;">Recordar cada (horas)</label>
+        <input type="number" id="inIntervaloHoras" min="0.5" max="24" step="0.5" value="4">
+      </div>
+    </div>
+
     <div class="setup-card">
       <div class="section-sub" style="margin-top:0;">Identificación</div>
       <div class="field-inline">
         <label class="req">Guardia</label>
-        <input type="text" id="inGuardia" placeholder="Nombre completo">
+        <input type="text" id="inGuardia" placeholder="Nombre completo" list="listaGuardiasDatalist" autocomplete="off">
+        <datalist id="listaGuardiasDatalist"></datalist>
+      </div>
+      <div class="field-inline" id="pinField" style="display:none;">
+        <label class="req">PIN del guardia</label>
+        <input type="password" id="inPin" inputmode="numeric" maxlength="6" placeholder="••••">
       </div>
       <div class="field-inline">
         <label class="req">Área / Campo</label>
@@ -530,6 +550,33 @@ footer.note b{color:var(--muted);}
           <option value="Vespertino">Vespertino</option>
           <option value="Nocturno">Nocturno</option>
         </select>
+      </div>
+    </div>
+
+    <div class="add-panel" id="panelGuardias">
+      <div class="add-panel-head" id="panelGuardiasHead">
+        <h2>👤 Guardias registrados (PIN de acceso)</h2>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span class="hint" id="guardiasHint">0 guardias con PIN</span>
+          <span class="chev">▾</span>
+        </div>
+      </div>
+      <div class="add-panel-body">
+        <div style="padding:16px 18px;">
+          <div style="color:var(--muted);font-size:12.5px;margin-bottom:12px;">
+            Registre aquí a los guardias que usan este teléfono, con un PIN de 4 a 6 dígitos. Si el nombre escrito
+            arriba en "Guardia" coincide con uno de esta lista, se pedirá su PIN antes de poder iniciar el rondín —
+            así se evita que un guardia inicie el rondín de otro en el mismo teléfono. Un guardia sin PIN registrado
+            puede iniciar sin restricción (útil para invitados temporales).
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;" id="formNuevoGuardia">
+            <input type="text" id="inNuevoGuardiaNombre" placeholder="Nombre completo" style="flex:1;min-width:160px;background:var(--panel-alt);border:1px solid var(--border);border-radius:9px;padding:10px 12px;color:var(--text);">
+            <input type="text" id="inNuevoGuardiaPin" placeholder="PIN (4-6 dígitos)" inputmode="numeric" maxlength="6" style="width:150px;background:var(--panel-alt);border:1px solid var(--border);border-radius:9px;padding:10px 12px;color:var(--text);">
+            <button type="button" class="btn-primary" id="btnAgregarGuardia" style="white-space:nowrap;">Registrar</button>
+          </div>
+          <div class="form-msg" id="guardiaFormMsg" style="margin-top:8px;"></div>
+          <div class="chip-list" id="listaGuardiasChips" style="margin-top:12px;"></div>
+        </div>
       </div>
     </div>
 
@@ -572,7 +619,7 @@ footer.note b{color:var(--muted);}
 
     <div class="section-title" style="margin-top:30px;">
       <h2>📋 Historial de rondines</h2>
-      <div class="desc">Guardados en este teléfono — expórtelos para enviarlos al supervisor</div>
+      <div class="desc" id="historialResumenDesc">Guardados en este teléfono — expórtelos para enviarlos al supervisor</div>
     </div>
     <div id="historialList"></div>
 
@@ -645,6 +692,8 @@ footer.note b{color:var(--muted);}
       <h2>✅ Rondín finalizado</h2>
       <div class="desc" id="resumenSub">—</div>
     </div>
+
+    <div class="form-msg ok" style="display:block;margin-bottom:16px;">📌 Este rondín ya quedó guardado en este teléfono. Toque "⬇ Exportar rondín (JSON)" y envíelo al supervisor (WhatsApp, correo, etc.) para que aparezca en el panel — mientras no lo envíe, seguirá marcado como "pendiente de enviar" en su historial.</div>
 
     <div class="kpis" id="resumenKpis"></div>
 
@@ -926,6 +975,144 @@ renderPuntosList();
 
 const panelPuntos = document.getElementById('panelPuntos');
 document.getElementById('panelPuntosHead').addEventListener('click', ()=>{ panelPuntos.classList.toggle('open'); });
+
+// ---------- guardias registrados con PIN (para evitar que un guardia marque el rondín de otro) ----------
+const GUARDIAS_KEY = 'rondines_guardias_pin_v1';
+function loadGuardiasPin(){
+  try{ const raw = localStorage.getItem(GUARDIAS_KEY); const data = raw ? JSON.parse(raw) : []; return Array.isArray(data) ? data : []; }catch(e){ return []; }
+}
+function saveGuardiasPin(arr){ try{ localStorage.setItem(GUARDIAS_KEY, JSON.stringify(arr)); return true; }catch(e){ return false; } }
+function buscarGuardiaPin(nombre){
+  const n = (nombre||'').trim().toLowerCase();
+  if(!n) return null;
+  return loadGuardiasPin().find(g=>g.nombre.trim().toLowerCase()===n) || null;
+}
+function renderDatalistGuardias(lista){
+  document.getElementById('listaGuardiasDatalist').innerHTML = lista.map(g=>`<option value="${g.nombre}"></option>`).join('');
+}
+function renderGuardiasChips(){
+  const lista = loadGuardiasPin();
+  document.getElementById('guardiasHint').textContent = lista.length+' guardia'+(lista.length===1?'':'s')+' con PIN';
+  document.getElementById('listaGuardiasChips').innerHTML = lista.map((g,i)=>`
+    <span class="chip">${g.nombre} <button type="button" class="btn-del-guardia" data-idx="${i}" title="Quitar">✕</button></span>
+  `).join('') || '<span style="color:var(--muted);font-size:12px;">Aún no hay guardias registrados.</span>';
+  renderDatalistGuardias(lista);
+}
+let pinRequerido = false, pinEsperado = null;
+function actualizarPinRequerido(){
+  const g = buscarGuardiaPin(document.getElementById('inGuardia').value);
+  const pinField = document.getElementById('pinField');
+  if(g){
+    pinRequerido = true; pinEsperado = g.pin;
+    pinField.style.display = 'flex';
+  } else {
+    pinRequerido = false; pinEsperado = null;
+    pinField.style.display = 'none';
+    document.getElementById('inPin').value = '';
+  }
+}
+document.getElementById('inGuardia').addEventListener('input', actualizarPinRequerido);
+document.getElementById('btnAgregarGuardia').addEventListener('click', function(){
+  const nombre = document.getElementById('inNuevoGuardiaNombre').value.trim();
+  const pin = document.getElementById('inNuevoGuardiaPin').value.trim();
+  const msgEl = document.getElementById('guardiaFormMsg');
+  if(!nombre || !pin){ msgEl.textContent = 'Escriba el nombre y el PIN.'; msgEl.className = 'form-msg err'; return; }
+  if(!/^\d{4,6}$/.test(pin)){ msgEl.textContent = 'El PIN debe ser de 4 a 6 dígitos numéricos.'; msgEl.className = 'form-msg err'; return; }
+  const lista = loadGuardiasPin();
+  if(lista.some(g=>g.nombre.trim().toLowerCase()===nombre.toLowerCase())){
+    msgEl.textContent = 'Ya existe un guardia registrado con ese nombre. Quítelo primero si desea cambiar su PIN.';
+    msgEl.className = 'form-msg err'; return;
+  }
+  lista.push({nombre, pin});
+  saveGuardiasPin(lista);
+  document.getElementById('inNuevoGuardiaNombre').value = '';
+  document.getElementById('inNuevoGuardiaPin').value = '';
+  msgEl.textContent = 'Guardia registrado con PIN.'; msgEl.className = 'form-msg ok';
+  renderGuardiasChips();
+  actualizarPinRequerido();
+});
+document.getElementById('listaGuardiasChips').addEventListener('click', function(e){
+  const btn = e.target.closest('.btn-del-guardia');
+  if(!btn) return;
+  const idx = parseInt(btn.getAttribute('data-idx'),10);
+  const lista = loadGuardiasPin();
+  const nombreQuitado = lista[idx] ? lista[idx].nombre : '';
+  if(!confirm('¿Quitar a "'+nombreQuitado+'" de la lista de guardias con PIN?')) return;
+  lista.splice(idx,1);
+  saveGuardiasPin(lista);
+  renderGuardiasChips();
+  actualizarPinRequerido();
+});
+const panelGuardias = document.getElementById('panelGuardias');
+document.getElementById('panelGuardiasHead').addEventListener('click', ()=>{ panelGuardias.classList.toggle('open'); });
+renderGuardiasChips();
+
+// ---------- recordatorio de próximo rondín esperado (por inactividad en este teléfono) ----------
+const INTERVALO_KEY = 'rondines_intervalo_horas_v1';
+function loadIntervaloHoras(){
+  const raw = localStorage.getItem(INTERVALO_KEY);
+  const n = raw ? parseFloat(raw) : 4;
+  return (isFinite(n) && n>0) ? n : 4;
+}
+function saveIntervaloHoras(n){ try{ localStorage.setItem(INTERVALO_KEY, String(n)); }catch(e){} }
+let notifPermisoSolicitado = false;
+let ultimaAlertaNotificada = 0;
+async function pedirPermisoNotificacion(){
+  if(!('Notification' in window)) return;
+  if(Notification.permission==='default' && !notifPermisoSolicitado){
+    notifPermisoSolicitado = true;
+    try{ await Notification.requestPermission(); }catch(e){}
+  }
+}
+async function actualizarRecordatorio(){
+  const cajaEl = document.getElementById('recordatorioBox');
+  const tiempoEl = document.getElementById('recordatorioTiempo');
+  const estadoEl = document.getElementById('recordatorioEstadoTxt');
+  if(!cajaEl) return;
+  const rondines = await dbGetAllRondines();
+  const finalizados = rondines.filter(r=>r.fin);
+  const ultimoFin = finalizados.length ? Math.max(...finalizados.map(r=>r.fin)) : null;
+  const intervaloHoras = loadIntervaloHoras();
+  if(!ultimoFin){
+    tiempoEl.textContent = '—';
+    estadoEl.textContent = 'Sin rondines aún en este teléfono';
+    estadoEl.style.color = 'var(--muted)';
+    cajaEl.style.borderColor = 'var(--border)';
+    return;
+  }
+  const horas = (Date.now()-ultimoFin)/3600000;
+  const hh = Math.floor(horas), mm = Math.round((horas-hh)*60);
+  tiempoEl.textContent = hh+'h '+String(mm).padStart(2,'0')+'min';
+  const ratio = horas/intervaloHoras;
+  if(ratio < 0.7){
+    estadoEl.textContent = 'Dentro de lo esperado';
+    estadoEl.style.color = 'var(--verde)';
+    cajaEl.style.borderColor = 'rgba(63,185,80,.4)';
+  } else if(ratio < 1){
+    estadoEl.textContent = 'Se acerca la hora del próximo rondín';
+    estadoEl.style.color = 'var(--amarillo)';
+    cajaEl.style.borderColor = 'rgba(227,179,65,.4)';
+  } else {
+    estadoEl.textContent = '⏰ Ya se pasó el tiempo esperado — inicie un rondín';
+    estadoEl.style.color = 'var(--rojo)';
+    cajaEl.style.borderColor = 'rgba(240,85,74,.5)';
+    if(ultimaAlertaNotificada !== ultimoFin){
+      ultimaAlertaNotificada = ultimoFin;
+      if('Notification' in window && Notification.permission==='granted'){
+        try{ new Notification('Rondines de Seguridad', {body:'Ya se pasó el tiempo esperado desde el último rondín. Por favor inicie el siguiente.'}); }catch(e){}
+      }
+      if(navigator.vibrate){ try{ navigator.vibrate([200,100,200]); }catch(e){} }
+    }
+  }
+}
+document.getElementById('inIntervaloHoras').value = loadIntervaloHoras();
+document.getElementById('inIntervaloHoras').addEventListener('change', function(){
+  const v = parseFloat(this.value);
+  if(isFinite(v) && v>0){ saveIntervaloHoras(v); actualizarRecordatorio(); }
+});
+pedirPermisoNotificacion();
+actualizarRecordatorio();
+setInterval(actualizarRecordatorio, 60000);
 
 // ---------- exportar / importar la plantilla de puntos de control (todas las áreas) ----------
 document.getElementById('btnExportarPuntos').addEventListener('click', function(){
@@ -1312,6 +1499,22 @@ document.getElementById('btnIniciarRondin').addEventListener('click', function()
     msgEl.className = 'form-msg err';
     return;
   }
+  actualizarPinRequerido();
+  if(pinRequerido){
+    const pinEscrito = document.getElementById('inPin').value.trim();
+    if(!pinEscrito){
+      msgEl.textContent = '"'+guardia+'" tiene PIN registrado — escríbalo para iniciar el rondín.';
+      msgEl.className = 'form-msg err';
+      return;
+    }
+    if(pinEscrito !== pinEsperado){
+      msgEl.textContent = 'PIN incorrecto para "'+guardia+'".';
+      msgEl.className = 'form-msg err';
+      document.getElementById('inPin').value = '';
+      return;
+    }
+  }
+  document.getElementById('inPin').value = '';
   const puntos = getPuntosDeArea(area);
   rondinActivo = {
     id: nextId('rondin'),
@@ -1320,7 +1523,8 @@ document.getElementById('btnIniciarRondin').addEventListener('click', function()
     checkpoints: puntos.map(nombre=>({nombre, marcado:false, lat:null,lng:null,ts:null,foto:null,nota:''})),
     paradasLibres: [],
     novedades: [],
-    ruta: lastPosition ? [Object.assign({tipo:'inicio'}, lastPosition)] : []
+    ruta: lastPosition ? [Object.assign({tipo:'inicio'}, lastPosition)] : [],
+    exportado: false, tsExportado: null
   };
   lastRoutePointTs = Date.now();
   showScreen('activo');
@@ -1442,17 +1646,30 @@ function exportRondinJSON(rondin){
   a.href = url; a.download = 'rondin_'+rondin.guardia.replace(/\\s+/g,'_')+'_'+fecha+'.json';
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
+  rondin.exportado = true;
+  rondin.tsExportado = Date.now();
+  dbSaveRondin(rondin).then(renderHistorial).catch(()=>{});
 }
 
 document.getElementById('btnNuevoRondin').addEventListener('click', function(){
   rondinActivo = null;
   showScreen('setup');
+  actualizarRecordatorio();
 });
 
 // ---------- historial ----------
 async function renderHistorial(){
   const cont = document.getElementById('historialList');
+  const descEl = document.getElementById('historialResumenDesc');
   const rondines = (await dbGetAllRondines()).sort((a,b)=>b.inicio-a.inicio);
+  const pendientes = rondines.filter(r=>!r.exportado).length;
+  if(descEl){
+    descEl.textContent = rondines.length===0
+      ? 'Guardados en este teléfono — expórtelos para enviarlos al supervisor'
+      : (pendientes>0
+          ? ('⚠️ '+pendientes+' de '+rondines.length+' rondín(es) guardado(s) en este teléfono aún NO se han exportado/enviado al supervisor.')
+          : ('✅ Los '+rondines.length+' rondín(es) guardado(s) en este teléfono ya se exportaron.'));
+  }
   if(rondines.length===0){
     cont.innerHTML = '<div style="color:var(--muted);font-size:13px;">Aún no hay rondines guardados en este teléfono.</div>';
     return;
@@ -1463,9 +1680,12 @@ async function renderHistorial(){
     const marcados = (r.checkpoints||[]).filter(c=>c.marcado).length;
     const totalCp = (r.checkpoints||[]).length;
     const numNov = (r.novedades||[]).length;
+    const pillTxt = r.exportado ? '✅ Enviado' : '🟡 Pendiente de enviar';
+    const pillClase = r.exportado ? 'VERDE' : 'AMARILLO';
+    const pillTitle = r.exportado ? 'Ya se exportó — verifique que se haya enviado al supervisor' : 'Guardado en este teléfono — aún no se ha exportado ni enviado al supervisor';
     return `<div class="history-item">
       <div>
-        <div class="h-main">${r.guardia} · ${r.area}${r.turno?' · '+r.turno:''}${numNov>0?' · <span style="color:var(--rojo);">🔍 '+numNov+' novedad'+(numNov===1?'':'es')+'</span>':''}</div>
+        <div class="h-main">${r.guardia} · ${r.area}${r.turno?' · '+r.turno:''}${numNov>0?' · <span style="color:var(--rojo);">🔍 '+numNov+' novedad'+(numNov===1?'':'es')+'</span>':''} <span class="status-pill ${pillClase}" style="margin-left:6px;" title="${pillTitle}">${pillTxt}</span></div>
         <div class="h-sub">${fmtDateTime(r.inicio)} · ${durMin} min · ${dist.toFixed(2)} km · ${marcados}/${totalCp} puntos · ${(r.paradasLibres||[]).length} paradas</div>
       </div>
       <div class="h-actions">
