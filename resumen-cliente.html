@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Resumen de Seguridad · Vista para el cliente</title>
+<meta name="theme-color" content="#4f8fd6">
+<!-- Vista de solo lectura, sin controles de administración: combina lo ya importado en este mismo navegador
+     desde el Panel de Rondines (rondines_panel_db) y el Panel de Control de Acceso (control_acceso_panel_db).
+     No importa ni modifica nada — solo lee lo que ya está guardado en este navegador. Funciona sin conexión
+     a internet una vez que se ha abierto al menos una vez con internet. -->
+<style>
+:root{
+  --bg:#10141b; --panel:#1a212c; --panel-alt:#212a37; --border:#2c3444; --border-soft:#232b38;
+  --text:#e8ecf1; --muted:#8b95a6; --muted-dim:#5f6878;
+  --accent:#4f8fd6; --accent-soft:rgba(79,143,214,.14);
+  --verde:#3fb950; --verde-soft:rgba(63,185,80,.14);
+  --amarillo:#e3b341; --amarillo-soft:rgba(227,179,65,.14);
+  --naranja:#e08a4b; --rojo:#f0554a; --rojo-soft:rgba(240,85,74,.15);
+  --radius:10px;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background:radial-gradient(1200px 600px at 10% -10%, #17202c 0%, var(--bg) 45%) fixed, var(--bg);
+  color:var(--text); font-family:'Inter',system-ui,sans-serif; font-size:14px; line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1200px;margin:0 auto;padding:26px 22px 60px;}
+header.top{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;padding-bottom:18px;margin-bottom:20px;border-bottom:1px solid var(--border-soft);flex-wrap:wrap;}
+.brand{display:flex;align-items:center;gap:12px;}
+.brand-mark{width:40px;height:40px;border-radius:9px;flex:none;background:linear-gradient(160deg,var(--accent),#2c5c8f);display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 1px rgba(255,255,255,.06) inset;}
+.brand-mark svg{width:22px;height:22px;}
+h1{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:26px;margin:0;line-height:1.1;}
+.brand-sub{color:var(--muted);font-size:12.5px;margin-top:3px;}
+.top-right{text-align:right;color:var(--muted);font-size:12px;}
+.period-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:22px;}
+.period-btn{background:var(--panel);border:1px solid var(--border);color:var(--muted);padding:9px 18px;border-radius:20px;cursor:pointer;font-size:13px;font-family:inherit;}
+.period-btn.active{border-color:var(--accent);color:var(--text);background:var(--accent-soft);}
+.print-btn{margin-left:auto;background:transparent;border:1px solid var(--border);color:var(--muted);padding:9px 16px;border-radius:8px;cursor:pointer;font-size:13px;font-family:inherit;}
+.print-btn:hover{border-color:var(--accent);color:var(--text);}
+.section-title{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:30px 0 14px;}
+.section-title h2{font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:21px;margin:0;}
+.section-title .desc{color:var(--muted);font-size:12.5px;}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:6px;}
+.kpi{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;position:relative;overflow:hidden;}
+.kpi .label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:9px;}
+.kpi .value{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:32px;line-height:1;}
+.kpi .sub{font-size:11.5px;color:var(--muted-dim);margin-top:7px;font-family:'IBM Plex Mono',monospace;}
+.kpi.semaforo .value{display:flex;align-items:center;gap:9px;font-size:24px;}
+.dot{width:13px;height:13px;border-radius:50%;flex:none;box-shadow:0 0 10px 1px currentColor;}
+.dot.VERDE{background:var(--verde);color:var(--verde);} .dot.AMARILLO{background:var(--amarillo);color:var(--amarillo);} .dot.ROJO{background:var(--rojo);color:var(--rojo);}
+.kpi-accentbar{position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent);}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px 14px;margin-top:6px;}
+.panel h2{font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:18px;margin:0 0 3px;}
+.panel .desc{color:var(--muted);font-size:12px;margin-bottom:12px;}
+.route-canvas-box{position:relative;background:var(--panel-alt);border:1px solid var(--border-soft);border-radius:var(--radius);height:400px;}
+.route-legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;font-size:11.5px;color:var(--muted);}
+.route-legend .dot-legend{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:middle;}
+.empty-note{color:var(--muted);font-size:13px;background:var(--panel-alt);border:1px dashed var(--border);border-radius:var(--radius);padding:22px;text-align:center;margin-top:6px;}
+footer.note{margin-top:34px;padding-top:16px;border-top:1px solid var(--border-soft);color:var(--muted-dim);font-size:11.5px;line-height:1.7;}
+@media print{
+  .period-bar, .print-btn{display:none !important;}
+  body{background:#fff;color:#1a2230;}
+  .kpi,.panel{border-color:#ccc;background:#fff;}
+  header.top{border-color:#ccc;}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 2L4 5v6c0 5.2 3.4 9.8 8 11 4.6-1.2 8-5.8 8-11V5l-8-3z" stroke="#dbe8f7" stroke-width="1.6" stroke-linejoin="round"/>
+          <path d="M9 12.2l2 2 4-4.4" stroke="#dbe8f7" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <div>
+        <h1>Resumen de Seguridad</h1>
+        <div class="brand-sub">Rondines y Control de Acceso — vista ejecutiva para el cliente</div>
+      </div>
+    </div>
+    <div class="top-right">
+      <div>Generado: <span id="generadoTs">—</span></div>
+    </div>
+  </header>
+
+  <div class="period-bar">
+    <button type="button" class="period-btn" data-periodo="hoy">Hoy</button>
+    <button type="button" class="period-btn active" data-periodo="7dias">Últimos 7 días</button>
+    <button type="button" class="period-btn" data-periodo="mes">Este mes</button>
+    <button type="button" class="print-btn" id="btnImprimir">🖨️ Imprimir / Guardar como PDF</button>
+  </div>
+
+  <div class="section-title">
+    <h2>🛡️ Rondines de seguridad</h2>
+    <div class="desc" id="periodoTxtRondines">—</div>
+  </div>
+  <div id="rondinesEmpty" class="empty-note" style="display:none;">No se han importado datos de Rondines en este navegador todavía. Ábralos primero en el Panel de Rondines (import de JSON) — al estar en el mismo sitio, esta vista los leerá automáticamente.</div>
+  <div id="rondinesContent" style="display:none;">
+    <div class="kpis" id="kpisRondines"></div>
+    <div class="panel" style="margin-top:18px;">
+      <h2>🗺️ Rutas recorridas</h2>
+      <div class="desc">Coordenadas GPS reales de los rondines del periodo — trazo directo, sin mapa de calles (la app funciona sin internet)</div>
+      <div class="route-canvas-box"><canvas id="mapaRutasCanvas"></canvas></div>
+      <div class="route-legend" id="mapaRutasLegend"></div>
+    </div>
+  </div>
+
+  <div class="section-title">
+    <h2>🪪 Control de acceso</h2>
+    <div class="desc" id="periodoTxtAcceso">—</div>
+  </div>
+  <div id="accesoEmpty" class="empty-note" style="display:none;">No se han importado datos de Control de Acceso en este navegador todavía. Ábralos primero en el Panel de Control de Acceso (import de JSON) — al estar en el mismo sitio, esta vista los leerá automáticamente.</div>
+  <div id="accesoContent" style="display:none;">
+    <div class="kpis" id="kpisAcceso"></div>
+  </div>
+
+  <footer class="note">
+    <b>Sobre esta vista.</b> Es de solo lectura: no importa, edita ni elimina nada — solo muestra lo que ya se
+    importó en este mismo navegador desde el Panel de Rondines y el Panel de Control de Acceso. Ábrala aquí para
+    consultarla, o use "Imprimir / Guardar como PDF" para compartirla como una sola página con el cliente.
+  </footer>
+
+</div>
+<script>
+const COLORS = { VERDE:'#3fb950', AMARILLO:'#e3b341', ROJO:'#f0554a', NARANJA:'#e08a4b', accent:'#4f8fd6', muted:'#8b95a6', text:'#e8ecf1' };
+const PALETTE_AREAS = ['#4f8fd6','#3fb950','#e3b341','#e08a4b','#f0554a','#a371f7','#39c5cf','#e0459b','#8b95a6','#56d364'];
+const UMBRAL_HORAS_EXCEDIDO = 4;
+const MIN_OCURRENCIAS_COMBO_ESPERADO = 2;
+
+function sum(arr){ return arr.reduce((a,b)=>a+b,0); }
+function avg(arr){ return arr.length ? sum(arr)/arr.length : 0; }
+function fmtPct(v){ return (Math.round(v*1000)/10).toFixed(1)+'%'; }
+function fmtDateOnly(ts){ if(!ts) return '—'; return new Date(ts).toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}); }
+function dateKeyLocal(ts){
+  const d = new Date(ts);
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function haversineKm(a,b){
+  const R=6371, dLat=(b.lat-a.lat)*Math.PI/180, dLng=(b.lng-a.lng)*Math.PI/180;
+  const lat1=a.lat*Math.PI/180, lat2=b.lat*Math.PI/180;
+  const h = Math.sin(dLat/2)**2 + Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLng/2)**2;
+  return R*2*Math.atan2(Math.sqrt(h),Math.sqrt(1-h));
+}
+function routeDistanceKm(points){
+  const pts = (points||[]).filter(p=>p.lat!=null);
+  let d=0; for(let i=1;i<pts.length;i++) d += haversineKm(pts[i-1],pts[i]);
+  return d;
+}
+function cumplimientoDe(r){
+  const total = (r.checkpoints||[]).length;
+  if(total===0) return null;
+  return r.checkpoints.filter(c=>c.marcado).length/total;
+}
+function estaExcedido(a){ return !a.horaSalida && (Date.now()-a.horaIngreso) > UMBRAL_HORAS_EXCEDIDO*3600000; }
+
+// ---------- IndexedDB: mismas bases que usan los paneles de Rondines y Control de Acceso ----------
+function abrirDB(nombre, store){
+  return new Promise((resolve,reject)=>{
+    const req = indexedDB.open(nombre, 1);
+    req.onupgradeneeded = function(){
+      const db = req.result;
+      if(!db.objectStoreNames.contains(store)) db.createObjectStore(store, {keyPath:'id'});
+    };
+    req.onsuccess = ()=>resolve(req.result);
+    req.onerror = ()=>reject(req.error);
+  });
+}
+async function leerTodo(nombreDB, store){
+  try{
+    const db = await abrirDB(nombreDB, store);
+    return await new Promise((resolve,reject)=>{
+      const tx = db.transaction(store,'readonly');
+      const req = tx.objectStore(store).getAll();
+      req.onsuccess = ()=>resolve(req.result||[]);
+      req.onerror = ()=>reject(req.error);
+    });
+  } catch(e){ console.error('No se pudo leer '+nombreDB, e); return []; }
+}
+
+let ALL_RONDINES = [];
+let ALL_ACCESOS = [];
+let periodoActual = '7dias';
+
+function rangoPeriodo(periodo){
+  const ahora = new Date();
+  if(periodo==='hoy'){
+    const desde = new Date(ahora.getFullYear(),ahora.getMonth(),ahora.getDate()).getTime();
+    return {desde, hasta: Date.now(), texto: 'Hoy, '+fmtDateOnly(desde)};
+  }
+  if(periodo==='mes'){
+    const desde = new Date(ahora.getFullYear(),ahora.getMonth(),1).getTime();
+    return {desde, hasta: Date.now(), texto: fmtDateOnly(desde)+' — '+fmtDateOnly(Date.now())};
+  }
+  const desde = Date.now()-7*86400000;
+  return {desde, hasta: Date.now(), texto: fmtDateOnly(desde)+' — '+fmtDateOnly(Date.now())};
+}
+
+// ---------- cobertura de rondines (combos área+turno esperados vs cubiertos en el periodo) ----------
+function calcularCoberturaPeriodo(todos, desde, hasta){
+  if(!todos.length) return {pct:null, dias:0};
+  const conteoCombo = {};
+  todos.forEach(r=>{ const k=r.area+'||'+r.turno; conteoCombo[k]=(conteoCombo[k]||0)+1; });
+  const combosEsperados = Object.keys(conteoCombo).filter(k=>conteoCombo[k]>=MIN_OCURRENCIAS_COMBO_ESPERADO)
+    .map(k=>{ const [area,turno]=k.split('||'); return {area,turno}; });
+  if(!combosEsperados.length) return {pct:null, dias:0};
+
+  const enPeriodo = todos.filter(r=>r.inicio>=desde && r.inicio<=hasta);
+  const dias = new Set(enPeriodo.map(r=>dateKeyLocal(r.inicio)));
+  if(!dias.size) return {pct:null, dias:0};
+  const cubiertos = new Set(enPeriodo.map(r=>dateKeyLocal(r.inicio)+'||'+r.area+'||'+r.turno));
+  const totalCeldas = dias.size * combosEsperados.length;
+  let cubiertas = 0;
+  dias.forEach(dia=>{ combosEsperados.forEach(({area,turno})=>{ if(cubiertos.has(dia+'||'+area+'||'+turno)) cubiertas++; }); });
+  return {pct: cubiertas/totalCeldas, dias: dias.size};
+}
+
+function renderRondines(){
+  const {desde, hasta, texto} = rangoPeriodo(periodoActual);
+  document.getElementById('periodoTxtRondines').textContent = texto;
+  document.getElementById('periodoTxtAcceso').textContent = texto;
+
+  if(!ALL_RONDINES.length){
+    document.getElementById('rondinesEmpty').style.display = 'block';
+    document.getElementById('rondinesContent').style.display = 'none';
+    return;
+  }
+  document.getElementById('rondinesEmpty').style.display = 'none';
+  document.getElementById('rondinesContent').style.display = 'block';
+
+  const records = ALL_RONDINES.filter(r=>r.inicio>=desde && r.inicio<=hasta);
+  const conPuntos = records.filter(r=>(r.checkpoints||[]).length>0);
+  const cumplimientoProm = conPuntos.length ? avg(conPuntos.map(r=>cumplimientoDe(r))) : null;
+  const distanciaTotal = sum(records.map(r=>routeDistanceKm(r.ruta)));
+  const todasNovedades = records.flatMap(r=>r.novedades||[]);
+  const pendientes = todasNovedades.filter(n=>!n.resuelta).length;
+  const {pct: coberturaPct} = calcularCoberturaPeriodo(ALL_RONDINES, desde, hasta);
+  const guardiasDistintos = new Set(records.map(r=>r.guardia)).size;
+  const areasDistintas = new Set(records.map(r=>r.area)).size;
+
+  document.getElementById('kpisRondines').innerHTML = `
+    <div class="kpi"><div class="kpi-accentbar"></div><div class="label">Rondines realizados</div><div class="value">${records.length}</div><div class="sub">${guardiasDistintos} guardia(s) · ${areasDistintas} área(s)</div></div>
+    <div class="kpi semaforo"><div class="kpi-accentbar"></div><div class="label">% Cumplimiento de puntos</div><div class="value"><span class="dot ${cumplimientoProm==null?'':(cumplimientoProm>=0.95?'VERDE':(cumplimientoProm>=0.8?'AMARILLO':'ROJO'))}"></span>${cumplimientoProm==null?'—':fmtPct(cumplimientoProm)}</div><div class="sub">promedio del periodo</div></div>
+    <div class="kpi semaforo"><div class="kpi-accentbar"></div><div class="label">% Cobertura (sin huecos)</div><div class="value"><span class="dot ${coberturaPct==null?'':(coberturaPct>=0.95?'VERDE':(coberturaPct>=0.8?'AMARILLO':'ROJO'))}"></span>${coberturaPct==null?'—':fmtPct(coberturaPct)}</div><div class="sub">áreas y turnos cubiertos cada día</div></div>
+    <div class="kpi"><div class="kpi-accentbar"></div><div class="label">Distancia recorrida</div><div class="value">${distanciaTotal.toFixed(1)} km</div><div class="sub">GPS registrado en el periodo</div></div>
+    <div class="kpi"><div class="kpi-accentbar" style="background:var(--rojo);"></div><div class="label">Novedades encontradas</div><div class="value" style="${todasNovedades.length>0?'color:var(--rojo);':''}">${todasNovedades.length}</div><div class="sub">${pendientes>0?(pendientes+' pendiente'+(pendientes===1?'':'s')):'todas atendidas'}</div></div>
+  `;
+  renderMapaRutas(records);
+}
+
+function renderMapaRutas(records){
+  const canvas = document.getElementById('mapaRutasCanvas');
+  const legendEl = document.getElementById('mapaRutasLegend');
+  const conRuta = records.filter(r=>(r.ruta||[]).some(p=>p.lat!=null));
+  const parent = canvas.parentElement;
+  const dpr = window.devicePixelRatio||1;
+  const cssW = Math.max(50,parent.clientWidth), cssH = Math.max(50,parent.clientHeight);
+  canvas.width = cssW*dpr; canvas.height = cssH*dpr;
+  canvas.style.width = cssW+'px'; canvas.style.height = cssH+'px';
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,cssW,cssH);
+  if(!conRuta.length){
+    ctx.fillStyle = COLORS.muted; ctx.font='13px Inter, sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('Sin coordenadas GPS para este periodo.', cssW/2, cssH/2);
+    legendEl.innerHTML = '';
+    return;
+  }
+  const areas = Array.from(new Set(conRuta.map(r=>r.area))).sort();
+  const colorDeArea = {};
+  areas.forEach((a,i)=>{ colorDeArea[a] = PALETTE_AREAS[i % PALETTE_AREAS.length]; });
+
+  const todosPts = conRuta.flatMap(r=>(r.ruta||[]).filter(p=>p.lat!=null));
+  const pad = 26;
+  const lats = todosPts.map(p=>p.lat), lngs = todosPts.map(p=>p.lng);
+  const minLat=Math.min(...lats), maxLat=Math.max(...lats), minLng=Math.min(...lngs), maxLng=Math.max(...lngs);
+  const spanLat = Math.max(0.00005,maxLat-minLat), spanLng = Math.max(0.00005,maxLng-minLng);
+  function toXY(p){
+    const x = pad + ((p.lng-minLng)/spanLng)*(cssW-pad*2);
+    const y = (cssH-pad) - ((p.lat-minLat)/spanLat)*(cssH-pad*2);
+    return [x,y];
+  }
+  conRuta.forEach(r=>{
+    const pts = (r.ruta||[]).filter(p=>p.lat!=null);
+    if(pts.length<2) return;
+    ctx.strokeStyle = colorDeArea[r.area]||COLORS.accent;
+    ctx.globalAlpha = 0.55; ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    pts.forEach((p,i)=>{ const [x,y]=toXY(p); if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y); });
+    ctx.stroke();
+  });
+  ctx.globalAlpha = 0.7;
+  conRuta.forEach(r=>{
+    (r.ruta||[]).filter(p=>p.tipo==='checkpoint' && p.lat!=null).forEach(p=>{
+      const [x,y]=toXY(p);
+      ctx.beginPath(); ctx.arc(x,y,2.4,0,Math.PI*2); ctx.fillStyle=COLORS.VERDE; ctx.fill();
+    });
+  });
+  ctx.globalAlpha = 1;
+  legendEl.innerHTML = areas.map(a=>`<span><span class="dot-legend" style="background:${colorDeArea[a]};"></span>${a}</span>`).join('')
+    + '<span><span class="dot-legend" style="background:'+COLORS.VERDE+';"></span>Puntos de control marcados</span>';
+}
+
+function renderAcceso(){
+  const {desde, hasta} = rangoPeriodo(periodoActual);
+  if(!ALL_ACCESOS.length){
+    document.getElementById('accesoEmpty').style.display = 'block';
+    document.getElementById('accesoContent').style.display = 'none';
+    return;
+  }
+  document.getElementById('accesoEmpty').style.display = 'none';
+  document.getElementById('accesoContent').style.display = 'block';
+
+  const records = ALL_ACCESOS.filter(a=>a.horaIngreso>=desde && a.horaIngreso<=hasta);
+  const dentroAhora = ALL_ACCESOS.filter(a=>!a.horaSalida);
+  const excedidosAhora = dentroAhora.filter(a=>estaExcedido(a));
+  const salieron = records.filter(a=>a.horaSalida);
+  const duraciones = salieron.map(a=>(a.horaSalida-a.horaIngreso)/60000);
+  const visitantesDistintos = new Set(records.map(a=>a.nombre)).size;
+  const camposDistintos = new Set(records.map(a=>a.campo)).size;
+  const conteoCampos = {};
+  records.forEach(a=>{ conteoCampos[a.campo] = (conteoCampos[a.campo]||0)+1; });
+  const camposOrdenados = Object.entries(conteoCampos).sort((x,y)=>y[1]-x[1]);
+  const campoTop = camposOrdenados[0];
+
+  document.getElementById('kpisAcceso').innerHTML = `
+    <div class="kpi"><div class="kpi-accentbar"></div><div class="label">Accesos registrados</div><div class="value">${records.length}</div><div class="sub">${visitantesDistintos} persona(s) · ${camposDistintos} campo(s)</div></div>
+    <div class="kpi semaforo"><div class="kpi-accentbar"></div><div class="label">Actualmente dentro</div><div class="value"><span class="dot ${excedidosAhora.length>0?'ROJO':(dentroAhora.length>0?'AMARILLO':'VERDE')}"></span>${dentroAhora.length}</div><div class="sub">en este momento, todos los campos</div></div>
+    <div class="kpi semaforo"><div class="kpi-accentbar"></div><div class="label">⏰ Tiempo excedido</div><div class="value"><span class="dot ${excedidosAhora.length>0?'ROJO':'VERDE'}"></span>${excedidosAhora.length}</div><div class="sub">más de ${UMBRAL_HORAS_EXCEDIDO}h dentro sin salida</div></div>
+    <div class="kpi"><div class="kpi-accentbar"></div><div class="label">Duración promedio</div><div class="value">${duraciones.length?Math.round(avg(duraciones))+' min':'—'}</div><div class="sub">visitas del periodo ya salidas</div></div>
+    <div class="kpi"><div class="kpi-accentbar"></div><div class="label">Campo más visitado</div><div class="value" style="font-size:21px;">${campoTop?campoTop[0]:'—'}</div><div class="sub">${campoTop?(campoTop[1]+' acceso'+(campoTop[1]===1?'':'s')+' en el periodo'):'sin datos en el periodo'}</div></div>
+  `;
+}
+
+function renderTodo(){
+  document.getElementById('generadoTs').textContent = new Date().toLocaleString('es-MX',{dateStyle:'long',timeStyle:'short'});
+  renderRondines();
+  renderAcceso();
+}
+
+document.querySelectorAll('.period-btn').forEach(btn=>{
+  btn.addEventListener('click', function(){
+    periodoActual = this.getAttribute('data-periodo');
+    document.querySelectorAll('.period-btn').forEach(b=>b.classList.remove('active'));
+    this.classList.add('active');
+    renderTodo();
+  });
+});
+document.getElementById('btnImprimir').addEventListener('click', ()=>window.print());
+window.addEventListener('resize', function(){
+  clearTimeout(window._rrt);
+  window._rrt = setTimeout(renderTodo, 180);
+});
+
+async function cargarTodo(){
+  ALL_RONDINES = await leerTodo('rondines_panel_db','rondines');
+  ALL_ACCESOS = await leerTodo('control_acceso_panel_db','accesos');
+  renderTodo();
+}
+cargarTodo();
+</script>
+</body>
+</html>
