@@ -667,6 +667,25 @@ footer.note b{color:var(--muted);}
     <button type="button" class="btn-secondary" id="btnEscanearQR" style="width:100%;margin-bottom:14px;padding:13px;">📷 Escanear código QR de un punto de control</button>
     <input type="file" id="qrScanInput" accept="image/*" capture="environment" style="display:none;">
     <div class="form-msg" id="qrScanMsg" style="margin-bottom:10px;"></div>
+
+    <!-- ===================== MODAL: escanear QR con cámara en vivo ===================== -->
+    <div class="modal-overlay" id="modalQR">
+      <div class="modal-box" style="max-width:420px;padding:16px;">
+        <h3 style="margin-bottom:2px;">📷 Escanear código QR</h3>
+        <div class="modal-sub" id="qrLiveSub">Apunte la cámara al código QR pegado en el punto de control. Acérquese despacio hasta que quede dentro del recuadro y quieto un momento — no necesita tomar la foto, se detecta solo.</div>
+        <div style="position:relative;background:#000;border-radius:12px;overflow:hidden;">
+          <video id="qrVideo" autoplay playsinline muted style="width:100%;display:block;max-height:60vh;"></video>
+          <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;">
+            <div style="width:62%;aspect-ratio:1/1;border:3px solid rgba(63,185,80,.85);border-radius:16px;"></div>
+          </div>
+        </div>
+        <div class="form-msg" id="qrLiveMsg" style="margin-top:10px;"></div>
+        <div style="display:flex;gap:10px;margin-top:14px;">
+          <button type="button" class="btn-secondary" id="btnQrUsarFoto" style="flex:1;padding:11px;">📁 Usar foto en su lugar</button>
+          <button type="button" class="btn-secondary" id="btnQrCancelar" style="flex:1;padding:11px;">Cancelar</button>
+        </div>
+      </div>
+    </div>
     <div class="checkpoint-list" id="checkpointList"></div>
 
     <button type="button" class="btn-secondary" id="btnParadaLibre" style="width:100%;margin-top:16px;padding:13px;">➕ Agregar parada libre</button>
@@ -1295,10 +1314,72 @@ document.getElementById('btnParadaLibre').addEventListener('click', function(){
 });
 
 // ---------- escanear código QR de un punto de control ----------
+// Primero intenta lectura en vivo con la cámara (mucho más confiable: el guardia puede
+// acercarse/alejarse y esperar el enfoque, en vez de depender de una sola foto de la
+// cámara nativa que a veces se toma antes de enfocar bien). Si el navegador no soporta
+// cámara en vivo, o el guardia lo prefiere, cae al modo de una sola foto de respaldo.
 const QR_SCAN_SUPPORTED = ('BarcodeDetector' in window);
+const QR_LIVE_SUPPORTED = QR_SCAN_SUPPORTED && !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
 if(!QR_SCAN_SUPPORTED){
   document.getElementById('btnEscanearQR').title = 'Su navegador no soporta lectura de QR — use Chrome en Android, o marque el punto manualmente';
 }
+const modalQR = document.getElementById('modalQR');
+const qrVideo = document.getElementById('qrVideo');
+let qrStream = null;
+let qrDetectLoopActivo = false;
+let qrDetectorCam = null;
+
+function detenerCamaraQR(){
+  qrDetectLoopActivo = false;
+  if(qrStream){
+    try{ qrStream.getTracks().forEach(t=>t.stop()); }catch(e){}
+    qrStream = null;
+  }
+  qrVideo.srcObject = null;
+  modalQR.classList.remove('open');
+}
+
+async function iniciarEscaneoQR(){
+  if(!QR_LIVE_SUPPORTED){
+    document.getElementById('qrScanInput').click();
+    return;
+  }
+  const liveMsgEl = document.getElementById('qrLiveMsg');
+  liveMsgEl.textContent = ''; liveMsgEl.className = 'form-msg';
+  try{
+    qrStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}});
+  }catch(err){
+    console.error('No se pudo abrir la cámara en vivo:', err);
+    // permiso denegado o cámara no disponible: cae directo al modo de una foto
+    document.getElementById('qrScanInput').click();
+    return;
+  }
+  qrVideo.srcObject = qrStream;
+  modalQR.classList.add('open');
+  qrDetectorCam = qrDetectorCam || new BarcodeDetector({formats:['qr_code']});
+  qrDetectLoopActivo = true;
+  loopDetectarQR();
+}
+
+async function loopDetectarQR(){
+  if(!qrDetectLoopActivo) return;
+  try{
+    if(qrVideo.readyState >= 2){
+      const results = await qrDetectorCam.detect(qrVideo);
+      if(results && results.length){
+        const raw = results[0].rawValue || '';
+        detenerCamaraQR();
+        if(navigator.vibrate){ try{ navigator.vibrate(120); }catch(e){} }
+        procesarQRDetectado(raw);
+        return;
+      }
+    }
+  }catch(err){
+    console.error('Error leyendo QR en vivo:', err);
+  }
+  if(qrDetectLoopActivo) setTimeout(loopDetectarQR, 280);
+}
+
 document.getElementById('btnEscanearQR').addEventListener('click', function(){
   if(!QR_SCAN_SUPPORTED){
     const msgEl = document.getElementById('qrScanMsg');
@@ -1306,8 +1387,44 @@ document.getElementById('btnEscanearQR').addEventListener('click', function(){
     msgEl.className = 'form-msg err';
     return;
   }
+  document.getElementById('qrScanMsg').textContent = '';
+  iniciarEscaneoQR();
+});
+document.getElementById('btnQrCancelar').addEventListener('click', detenerCamaraQR);
+document.getElementById('btnQrUsarFoto').addEventListener('click', function(){
+  detenerCamaraQR();
   document.getElementById('qrScanInput').click();
 });
+modalQR.addEventListener('click', function(e){ if(e.target===modalQR) detenerCamaraQR(); });
+
+// Valida y procesa el contenido de un QR ya detectado (venga de la cámara en vivo o de una foto).
+function procesarQRDetectado(raw){
+  const msgEl = document.getElementById('qrScanMsg');
+  if(!raw.startsWith(QR_PREFIX)){
+    msgEl.textContent = 'Este código QR no corresponde a un punto de control de este rondín.';
+    msgEl.className = 'form-msg err';
+    return;
+  }
+  const resto = raw.slice(QR_PREFIX.length);
+  const sepIdx = resto.indexOf('::');
+  const areaQR = sepIdx>-1 ? resto.slice(0,sepIdx) : '';
+  const nombre = sepIdx>-1 ? resto.slice(sepIdx+2) : resto;
+  if(areaQR && areaQR.trim().toLowerCase()!==rondinActivo.area.trim().toLowerCase()){
+    msgEl.textContent = 'Este QR es del área "'+areaQR+'", pero este rondín es de "'+rondinActivo.area+'". Verifique que esté en el campo correcto.';
+    msgEl.className = 'form-msg err';
+    return;
+  }
+  const idx = rondinActivo.checkpoints.findIndex(c=>c.nombre===nombre);
+  if(idx===-1){
+    msgEl.textContent = 'El QR corresponde a "'+nombre+'", que no está en la ruta configurada de este rondín.';
+    msgEl.className = 'form-msg err';
+    return;
+  }
+  msgEl.textContent = 'Punto reconocido: "'+nombre+'". Complete la evidencia si desea.';
+  msgEl.className = 'form-msg ok';
+  abrirModalMarca({tipo:'checkpoint', idx, viaQR:true});
+}
+
 document.getElementById('qrScanInput').addEventListener('change', async function(e){
   const file = e.target.files[0];
   const msgEl = document.getElementById('qrScanMsg');
@@ -1315,37 +1432,14 @@ document.getElementById('qrScanInput').addEventListener('change', async function
   msgEl.textContent = 'Leyendo código QR…'; msgEl.className = 'form-msg ok';
   try{
     const bitmap = await createImageBitmap(file);
-    const detector = new BarcodeDetector({formats:['qr_code']});
+    const detector = qrDetectorCam || new BarcodeDetector({formats:['qr_code']});
     const results = await detector.detect(bitmap);
     if(!results.length){
       msgEl.textContent = 'No se detectó ningún código QR en la foto. Intente de nuevo con mejor luz/enfoque, o marque el punto manualmente.';
       msgEl.className = 'form-msg err';
       return;
     }
-    const raw = results[0].rawValue || '';
-    if(!raw.startsWith(QR_PREFIX)){
-      msgEl.textContent = 'Este código QR no corresponde a un punto de control de este rondín.';
-      msgEl.className = 'form-msg err';
-      return;
-    }
-    const resto = raw.slice(QR_PREFIX.length);
-    const sepIdx = resto.indexOf('::');
-    const areaQR = sepIdx>-1 ? resto.slice(0,sepIdx) : '';
-    const nombre = sepIdx>-1 ? resto.slice(sepIdx+2) : resto;
-    if(areaQR && areaQR.trim().toLowerCase()!==rondinActivo.area.trim().toLowerCase()){
-      msgEl.textContent = 'Este QR es del área "'+areaQR+'", pero este rondín es de "'+rondinActivo.area+'". Verifique que esté en el campo correcto.';
-      msgEl.className = 'form-msg err';
-      return;
-    }
-    const idx = rondinActivo.checkpoints.findIndex(c=>c.nombre===nombre);
-    if(idx===-1){
-      msgEl.textContent = 'El QR corresponde a "'+nombre+'", que no está en la ruta configurada de este rondín.';
-      msgEl.className = 'form-msg err';
-      return;
-    }
-    msgEl.textContent = 'Punto reconocido: "'+nombre+'". Complete la evidencia si desea.';
-    msgEl.className = 'form-msg ok';
-    abrirModalMarca({tipo:'checkpoint', idx, viaQR:true});
+    procesarQRDetectado(results[0].rawValue || '');
   } catch(err){
     console.error(err);
     msgEl.textContent = 'No se pudo leer la imagen. Intente de nuevo.';
