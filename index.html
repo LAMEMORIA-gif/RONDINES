@@ -740,6 +740,19 @@ footer.note b{color:var(--muted);}
     </div>
   </div>
 
+  <!-- ===================== MODAL: rondín sin terminar encontrado al abrir la app ===================== -->
+  <div class="modal-overlay rondin-modal" id="modalRondinPendiente">
+    <div class="modal-box">
+      <h3>⚠️ Hay un rondín sin terminar</h3>
+      <div class="modal-sub" id="rondinPendienteInfo">—</div>
+      <div style="color:var(--muted);font-size:12px;margin-bottom:4px;">Esto puede pasar si la app se cerró, se reinició o el teléfono se quedó sin batería antes de tocar "Finalizar rondín". Los puntos que ya se habían marcado quedaron guardados en este teléfono.</div>
+      <div style="display:flex;gap:10px;margin-top:14px;">
+        <button type="button" class="btn-primary" id="btnContinuarPendiente" style="flex:1;padding:11px;">Continuar este rondín</button>
+        <button type="button" class="btn-secondary" id="btnDescartarPendiente" style="flex:1;padding:11px;">Descartarlo</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ===================== MODAL: marcar punto / parada libre ===================== -->
   <div class="modal-overlay rondin-modal" id="modalMarcar">
     <div class="modal-box">
@@ -1233,6 +1246,21 @@ function registrarPuntoRuta(pos){
   lastRoutePointTs = now;
   rondinActivo.ruta.push(pos);
   updateLiveStats();
+  guardarProgresoRondin();
+}
+
+// ---------- autoguardado del progreso del rondín en curso ----------
+// Guarda rondinActivo en IndexedDB (mismo registro, se va actualizando) mientras el rondín
+// está en curso — así, si la app se cierra, se reinicia o el teléfono se queda sin batería
+// antes de tocar "Finalizar rondín", los puntos ya marcados no se pierden: al volver a abrir
+// la app se puede continuar desde ahí (ver revisarRondinPendiente más abajo).
+let lastAutosaveTs = 0;
+function guardarProgresoRondin(forzar){
+  if(!rondinActivo) return;
+  const now = Date.now();
+  if(!forzar && now-lastAutosaveTs < 15000) return;
+  lastAutosaveTs = now;
+  dbSaveRondin(rondinActivo).catch(function(err){ console.error('No se pudo autoguardar el progreso del rondín:', err); });
 }
 
 function updateLiveStats(){
@@ -1328,6 +1356,10 @@ const qrVideo = document.getElementById('qrVideo');
 let qrStream = null;
 let qrDetectLoopActivo = false;
 let qrDetectorCam = null;
+let qrScanStartTs = 0;
+const QR_SCAN_TIMEOUT_MS = 25000; // si no detecta nada en este tiempo, suelta la cámara sola
+                                   // (evita dejar la cámara/detección corriendo indefinidamente
+                                   // y consumiendo batería/memoria si el guardia se queda atorado)
 
 function detenerCamaraQR(){
   qrDetectLoopActivo = false;
@@ -1339,6 +1371,19 @@ function detenerCamaraQR(){
   modalQR.classList.remove('open');
 }
 
+// Pide la cámara con un pequeño reintento: en algunos celulares Android, si se acaba de soltar
+// la cámara de un escaneo anterior hace muy poco, pedirla de nuevo de inmediato puede fallar
+// ("cámara ocupada"). Esperar un instante y reintentar una vez resuelve la mayoría de esos casos.
+async function pedirCamaraQR(){
+  try{
+    return await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}});
+  }catch(err1){
+    console.error('Primer intento de abrir la cámara falló, reintentando…', err1);
+    await new Promise(r=>setTimeout(r, 400));
+    return await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}});
+  }
+}
+
 async function iniciarEscaneoQR(){
   if(!QR_LIVE_SUPPORTED){
     document.getElementById('qrScanInput').click();
@@ -1347,7 +1392,7 @@ async function iniciarEscaneoQR(){
   const liveMsgEl = document.getElementById('qrLiveMsg');
   liveMsgEl.textContent = ''; liveMsgEl.className = 'form-msg';
   try{
-    qrStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}});
+    qrStream = await pedirCamaraQR();
   }catch(err){
     console.error('No se pudo abrir la cámara en vivo:', err);
     // permiso denegado o cámara no disponible: cae directo al modo de una foto
@@ -1358,11 +1403,19 @@ async function iniciarEscaneoQR(){
   modalQR.classList.add('open');
   qrDetectorCam = qrDetectorCam || new BarcodeDetector({formats:['qr_code']});
   qrDetectLoopActivo = true;
+  qrScanStartTs = Date.now();
   loopDetectarQR();
 }
 
 async function loopDetectarQR(){
   if(!qrDetectLoopActivo) return;
+  if(Date.now()-qrScanStartTs > QR_SCAN_TIMEOUT_MS){
+    detenerCamaraQR();
+    const msgEl = document.getElementById('qrScanMsg');
+    msgEl.textContent = 'No se detectó ningún código QR en '+Math.round(QR_SCAN_TIMEOUT_MS/1000)+' segundos. Verifique que el QR esté bien iluminado y sin brillo, acérquese un poco más, o marque el punto manualmente con el botón "Marcar".';
+    msgEl.className = 'form-msg err';
+    return;
+  }
   try{
     if(qrVideo.readyState >= 2){
       const results = await qrDetectorCam.detect(qrVideo);
@@ -1574,6 +1627,7 @@ document.getElementById('btnConfirmarMarca').addEventListener('click', function(
   renderParadasLibresList();
   renderNovedadesList();
   updateLiveStats();
+  guardarProgresoRondin(true);
 });
 
 // ---------- iniciar / finalizar rondín ----------
@@ -1626,6 +1680,7 @@ document.getElementById('btnIniciarRondin').addEventListener('click', function()
   renderParadasLibresList();
   renderNovedadesList();
   updateLiveStats();
+  guardarProgresoRondin(true);
   timerInterval = setInterval(function(){
     document.getElementById('liveTimer').textContent = fmtTime(Date.now()-rondinActivo.inicio);
   }, 1000);
@@ -1755,7 +1810,9 @@ document.getElementById('btnNuevoRondin').addEventListener('click', function(){
 async function renderHistorial(){
   const cont = document.getElementById('historialList');
   const descEl = document.getElementById('historialResumenDesc');
-  const rondines = (await dbGetAllRondines()).sort((a,b)=>b.inicio-a.inicio);
+  // los que aún no tienen "fin" son borradores en curso (autoguardado) o pendientes de resumir,
+  // no rondines terminados — no se listan aquí, se ofrecen para continuar (revisarRondinPendiente)
+  const rondines = (await dbGetAllRondines()).filter(r=>r.fin!=null).sort((a,b)=>b.inicio-a.inicio);
   const pendientes = rondines.filter(r=>!r.exportado).length;
   if(descEl){
     descEl.textContent = rondines.length===0
@@ -1806,6 +1863,43 @@ document.getElementById('historialList').addEventListener('click', async functio
 });
 
 renderHistorial();
+
+// ---------- revisar si quedó un rondín sin terminar (la app se cerró/reinició antes de "Finalizar") ----------
+async function revisarRondinPendiente(){
+  let todos = [];
+  try{ todos = await dbGetAllRondines(); }catch(e){ console.error(e); return; }
+  const pendientes = todos.filter(r=>r.fin==null).sort((a,b)=>b.inicio-a.inicio);
+  const pendiente = pendientes[0];
+  if(!pendiente) return;
+  const marcados = pendiente.checkpoints.filter(c=>c.marcado).length;
+  const totalCp = pendiente.checkpoints.length;
+  const minTranscurridos = Math.max(0, Math.round((Date.now()-pendiente.inicio)/60000));
+  document.getElementById('rondinPendienteInfo').textContent =
+    pendiente.guardia+' · '+pendiente.area+(pendiente.turno?' · '+pendiente.turno:'')+
+    ' — iniciado hace '+minTranscurridos+' min, con '+marcados+'/'+totalCp+' punto(s) ya marcados.';
+  document.getElementById('modalRondinPendiente').classList.add('open');
+
+  document.getElementById('btnContinuarPendiente').onclick = function(){
+    rondinActivo = pendiente;
+    document.getElementById('modalRondinPendiente').classList.remove('open');
+    showScreen('activo');
+    renderCheckpointList();
+    renderParadasLibresList();
+    renderNovedadesList();
+    updateLiveStats();
+    clearInterval(timerInterval);
+    timerInterval = setInterval(function(){
+      document.getElementById('liveTimer').textContent = fmtTime(Date.now()-rondinActivo.inicio);
+    }, 1000);
+  };
+  document.getElementById('btnDescartarPendiente').onclick = async function(){
+    if(!confirm('¿Descartar este rondín sin terminar? Se perderán los '+marcados+' punto(s) ya marcados. Esta acción no se puede deshacer.')) return;
+    try{ await dbDeleteRondin(pendiente.id); }catch(e){ console.error(e); }
+    document.getElementById('modalRondinPendiente').classList.remove('open');
+    revisarRondinPendiente(); // por si quedó más de un borrador de una interrupción anterior
+  };
+}
+revisarRondinPendiente();
 
 // ---------- registrar Service Worker (permite abrir la app sin conexión a internet) ----------
 if("serviceWorker" in navigator){
