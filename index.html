@@ -606,8 +606,13 @@ footer.note b{color:var(--muted);}
           <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px;padding-top:14px;border-top:1px solid var(--border-soft);align-items:center;">
             <button type="button" class="btn-secondary" id="btnExportarPuntos">⬇ Exportar puntos (JSON)</button>
             <button type="button" class="btn-secondary" id="btnImportarPuntos">⬆ Importar puntos (JSON)</button>
-            <input type="file" id="fileImportPuntos" accept="application/json" style="display:none;">
-            <span style="color:var(--muted);font-size:11.5px;">Configure los puntos una sola vez y mande este archivo a los demás teléfonos, para no tener que volver a escribirlos.</span>
+            <input type="file" id="fileImportPuntos" accept=".json,application/json,text/plain" style="display:none;">
+            <button type="button" class="btn-secondary" id="btnPegarEnlacePuntos">📋 Pegar enlace de puntos</button>
+            <span style="color:var(--muted);font-size:11.5px;">Lo más fácil: toque el enlace de puntos que le manda su supervisor por WhatsApp (o escanee su QR con la cámara) y se cargan solos. Si el enlace le abre el navegador en vez de la app, cópielo y péguelo aquí con "Pegar enlace de puntos".</span>
+          </div>
+          <div id="pegarEnlaceBox" style="display:none;margin-top:10px;">
+            <textarea id="inEnlacePuntos" placeholder="Pegue aquí el enlace que le mandaron" style="width:100%;min-height:64px;background:var(--panel-alt);border:1px solid var(--border);border-radius:9px;padding:10px 12px;color:var(--text);font-size:12px;"></textarea>
+            <button type="button" class="btn-primary" id="btnCargarEnlacePuntos" style="margin-top:8px;">Cargar puntos</button>
           </div>
           <div class="form-msg" id="puntosImportMsg" style="margin-top:8px;"></div>
         </div>
@@ -1167,21 +1172,8 @@ document.getElementById('fileImportPuntos').addEventListener('change', function(
   reader.onload = function(ev){
     try{
       const imported = JSON.parse(ev.target.result);
-      if(Array.isArray(imported) || typeof imported!=='object' || imported===null) throw new Error('El archivo no tiene el formato esperado (debe ser puntos organizados por área).');
-      const actuales = loadPuntosPorArea();
-      let totalPuntos = 0, totalAreas = 0;
-      Object.keys(imported).forEach(area=>{
-        if(!Array.isArray(imported[area])) return;
-        totalAreas++;
-        if(!actuales[area]) actuales[area] = [];
-        imported[area].forEach(p=>{
-          totalPuntos++;
-          if(!actuales[area].includes(p)) actuales[area].push(p);
-        });
-      });
-      savePuntosPorArea(actuales);
-      renderPuntosList();
-      msgEl.textContent = totalPuntos+' punto(s) de '+totalAreas+' área(s) importados — se combinaron con los que ya tenía (sin duplicar).';
+      const r = combinarPuntosImportados(imported);
+      msgEl.textContent = r.totalPuntos+' punto(s) de '+r.totalAreas+' área(s) importados — se combinaron con los que ya tenía (sin duplicar).';
       msgEl.className = 'form-msg ok';
     } catch(err){
       msgEl.textContent = 'No se pudo leer el archivo: '+err.message;
@@ -1190,6 +1182,69 @@ document.getElementById('fileImportPuntos').addEventListener('change', function(
     document.getElementById('fileImportPuntos').value = '';
   };
   reader.readAsText(file);
+});
+
+// ---------- importar puntos desde ENLACE (#puntos=...) o QR — sin archivos .json ----------
+function combinarPuntosImportados(imported){
+  if(Array.isArray(imported) || typeof imported!=='object' || imported===null) throw new Error('El contenido no tiene el formato esperado (debe ser puntos organizados por área).');
+  const actuales = loadPuntosPorArea();
+  let totalPuntos = 0, totalAreas = 0; const areas = [];
+  Object.keys(imported).forEach(area=>{
+    if(!Array.isArray(imported[area])) return;
+    totalAreas++; areas.push(area);
+    if(!actuales[area]) actuales[area] = [];
+    imported[area].forEach(p=>{
+      totalPuntos++;
+      if(!actuales[area].includes(p)) actuales[area].push(p);
+    });
+  });
+  if(!savePuntosPorArea(actuales)) throw new Error('No se pudieron guardar los puntos en este teléfono.');
+  renderPuntosList();
+  return { totalPuntos, totalAreas, areas };
+}
+function decodificarPuntosB64(b64){
+  let s = String(b64).trim().replace(/-/g,'+').replace(/_/g,'/');
+  while(s.length % 4) s += '=';
+  return JSON.parse(decodeURIComponent(escape(atob(s))));
+}
+function importarPuntosDesdeTexto(texto){
+  const m = String(texto||'').match(/[#&?]puntos=([A-Za-z0-9_\-+\/=%]+)/);
+  if(!m) throw new Error('El texto no contiene un enlace de puntos válido.');
+  return combinarPuntosImportados(decodificarPuntosB64(decodeURIComponent(m[1])));
+}
+function mostrarResultadoEnlace(r, err){
+  const msgEl = document.getElementById('puntosImportMsg');
+  const panel = document.getElementById('panelPuntos');
+  if(panel) panel.classList.add('open');
+  if(err){
+    msgEl.textContent = 'No se pudieron cargar los puntos: '+err.message;
+    msgEl.className = 'form-msg err';
+  } else {
+    msgEl.textContent = '✅ Se cargaron '+r.totalPuntos+' punto(s) de control ('+r.areas.join(', ')+'). Ya puede iniciar su rondín.';
+    msgEl.className = 'form-msg ok';
+    const inArea = document.getElementById('inArea');
+    if(inArea && !inArea.value.trim() && r.areas.length===1){ inArea.value = r.areas[0]; renderPuntosList(); }
+  }
+  if(panel) setTimeout(()=>panel.scrollIntoView({behavior:'smooth', block:'start'}), 300);
+}
+function revisarHashPuntos(){
+  if(!/^#puntos=/.test(location.hash)) return;
+  const texto = location.hash;
+  try{ history.replaceState(null, '', location.pathname + location.search); }catch(e){}
+  try{ mostrarResultadoEnlace(importarPuntosDesdeTexto(texto)); }
+  catch(err){ mostrarResultadoEnlace(null, err); }
+}
+window.addEventListener('hashchange', revisarHashPuntos);
+revisarHashPuntos();
+document.getElementById('btnPegarEnlacePuntos').addEventListener('click', function(){
+  const box = document.getElementById('pegarEnlaceBox');
+  box.style.display = box.style.display==='none' ? 'block' : 'none';
+  if(box.style.display==='block') document.getElementById('inEnlacePuntos').focus();
+});
+document.getElementById('btnCargarEnlacePuntos').addEventListener('click', function(){
+  const inp = document.getElementById('inEnlacePuntos');
+  try{ mostrarResultadoEnlace(importarPuntosDesdeTexto(inp.value)); inp.value=''; document.getElementById('pegarEnlaceBox').style.display='none'; }
+  catch(err){ mostrarResultadoEnlace(null, err); }
 });
 
 // ---------- geolocalización ----------

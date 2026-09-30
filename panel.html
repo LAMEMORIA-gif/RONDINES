@@ -448,7 +448,7 @@ footer.note b{color:var(--muted);}
       <div style="font-size:28px;margin-bottom:8px;">⬆️</div>
       Toque para elegir archivo(s) JSON, o arrástrelos aquí
     </label>
-    <input type="file" id="fileImportRondines" accept="application/json" multiple style="display:none;">
+    <input type="file" id="fileImportRondines" accept=".json,application/json,text/plain" multiple style="display:none;">
     <div class="form-msg" id="importMsg" style="margin-top:12px;"></div>
     <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
       <button type="button" class="btn-secondary" id="btnExportarRespaldoRondines">💾 Exportar respaldo completo (JSON)</button>
@@ -494,8 +494,17 @@ footer.note b{color:var(--muted);}
           <button type="button" class="btn-secondary" id="btnExportarPuntosAdmin">⬇ Exportar todas las áreas (JSON)</button>
           <button type="button" class="btn-secondary" id="btnExportarSoloAreaAdmin">⬇ Exportar solo esta área (JSON)</button>
           <button type="button" class="btn-secondary" id="btnImportarPuntosAdmin">⬆ Importar puntos (JSON)</button>
-          <input type="file" id="fileImportPuntosAdmin" accept="application/json" style="display:none;">
-          <span style="color:var(--muted);font-size:11.5px;">Para que cada guardia solo vea los puntos de su propio campo en su app, seleccione arriba el área de ese guardia y mándele por WhatsApp el archivo de "Exportar solo esta área" — lo importan con "⬆ Importar puntos (JSON)" en el panel "Puntos de control" de su app.</span>
+          <input type="file" id="fileImportPuntosAdmin" accept=".json,application/json,text/plain" style="display:none;">
+        </div>
+        <div style="margin-top:14px;padding:14px;border:1px solid var(--accent);border-radius:12px;background:var(--panel-alt);">
+          <div style="font-weight:700;font-size:14px;margin-bottom:4px;">📲 Mandar los puntos al celular del guardia (recomendado)</div>
+          <div style="color:var(--muted);font-size:12px;margin-bottom:10px;">Sin archivos: el guardia solo toca el enlace en WhatsApp (o escanea el QR con la cámara de su celular) y los puntos se cargan solos en su app. Si hay un área seleccionada arriba se manda solo esa área; si no, se mandan todas.</div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            <button type="button" class="btn-primary" id="btnEnviarPuntosWA">📲 Enviar por WhatsApp</button>
+            <button type="button" class="btn-secondary" id="btnMostrarQRPuntos">🔳 Mostrar QR de configuración</button>
+            <button type="button" class="btn-secondary" id="btnCopiarEnlacePuntos">📋 Copiar enlace</button>
+          </div>
+          <div id="puntosEnlaceBox" style="display:none;margin-top:12px;text-align:center;"></div>
         </div>
         <div class="form-msg" id="puntosAdminMsg" style="margin-top:8px;"></div>
       </div>
@@ -1986,6 +1995,71 @@ document.getElementById('btnExportarSoloAreaAdmin').addEventListener('click', fu
   msgEl.textContent = 'Se exportaron '+puntos.length+' punto(s) de "'+areaAdminSeleccionada+'" únicamente. Mande este archivo solo al guardia de esa área.';
   msgEl.className = 'form-msg ok';
 });
+// ---------- mandar puntos por ENLACE / QR (sin archivos .json, que muchos celulares no pueden abrir) ----------
+const APP_GUARDIA_URL = 'https://lamemoria-gif.github.io/RONDINES/';
+function codificarPuntosB64(obj){
+  const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(obj))));
+  return b64.replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+}
+function puntosParaEnviar(){
+  const todo = loadPuntosPorArea();
+  if(areaAdminSeleccionada){
+    const pts = todo[areaAdminSeleccionada] || [];
+    return pts.length ? { obj:{[areaAdminSeleccionada]:pts}, etiqueta:'"'+areaAdminSeleccionada+'"', total:pts.length } : null;
+  }
+  const areas = Object.keys(todo).filter(a=>Array.isArray(todo[a]) && todo[a].length);
+  if(!areas.length) return null;
+  const obj = {}; let total = 0;
+  areas.forEach(a=>{ obj[a]=todo[a]; total+=todo[a].length; });
+  return { obj, etiqueta: areas.length+' área(s)', total };
+}
+function enlacePuntosOErr(){
+  const msgEl = document.getElementById('puntosAdminMsg');
+  const datos = puntosParaEnviar();
+  if(!datos){
+    msgEl.textContent = areaAdminSeleccionada ? ('El área "'+areaAdminSeleccionada+'" todavía no tiene puntos de control.') : 'Todavía no hay puntos de control configurados.';
+    msgEl.className = 'form-msg err';
+    return null;
+  }
+  datos.url = APP_GUARDIA_URL + '#puntos=' + codificarPuntosB64(datos.obj);
+  return datos;
+}
+document.getElementById('btnEnviarPuntosWA').addEventListener('click', function(){
+  const d = enlacePuntosOErr(); if(!d) return;
+  const texto = 'Puntos de control de rondín — '+d.etiqueta+' ('+d.total+' puntos).\nToque este enlace para cargarlos en su app de rondines:\n'+d.url;
+  window.open('https://wa.me/?text='+encodeURIComponent(texto), '_blank');
+  const msgEl = document.getElementById('puntosAdminMsg');
+  msgEl.textContent = 'Se abrió WhatsApp con el enlace de '+d.etiqueta+'. Elija al guardia y envíelo.';
+  msgEl.className = 'form-msg ok';
+});
+document.getElementById('btnCopiarEnlacePuntos').addEventListener('click', function(){
+  const d = enlacePuntosOErr(); if(!d) return;
+  const msgEl = document.getElementById('puntosAdminMsg');
+  const ok = ()=>{ msgEl.textContent = 'Enlace de '+d.etiqueta+' copiado. Péguelo en WhatsApp, correo o SMS.'; msgEl.className='form-msg ok'; };
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(d.url).then(ok, ()=>{ mostrarCajaEnlace(d, false); });
+  } else { mostrarCajaEnlace(d, false); }
+});
+document.getElementById('btnMostrarQRPuntos').addEventListener('click', function(){
+  const d = enlacePuntosOErr(); if(!d) return;
+  mostrarCajaEnlace(d, true);
+});
+function mostrarCajaEnlace(d, conQR){
+  const box = document.getElementById('puntosEnlaceBox');
+  let qrHtml = '';
+  if(conQR){
+    try{
+      const src = generarQRDataURL(d.url, 4);
+      qrHtml = '<img src="'+src+'" alt="QR de configuración" style="max-width:280px;width:100%;background:#fff;padding:8px;border-radius:8px;">'
+        + '<div style="font-size:12px;color:var(--muted);margin:6px 0 10px;">El guardia lo escanea con la <b>cámara normal</b> de su celular y toca el enlace que aparece — '+d.etiqueta+', '+d.total+' puntos.</div>';
+    }catch(e){
+      qrHtml = '<div class="form-msg err" style="display:block;">Son demasiados puntos para un solo QR. Seleccione un área arriba y genere el QR de esa área, o use "Enviar por WhatsApp".</div>';
+    }
+  }
+  box.innerHTML = qrHtml + '<textarea readonly style="width:100%;min-height:60px;font-size:11px;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px;" onclick="this.select()">'+d.url+'</textarea>';
+  box.style.display = 'block';
+}
+
 document.getElementById('btnImportarPuntosAdmin').addEventListener('click', function(){
   document.getElementById('fileImportPuntosAdmin').click();
 });
