@@ -365,6 +365,19 @@ footer.note b{color:var(--muted);}
 .alert-item .accion{color:var(--muted);font-size:12px;line-height:1.4;}
 .alert-item .calif{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--rojo);font-weight:600;}
 .alert-banner.hidden{display:none;}
+.falt-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;}
+.falt-total{font-family:Inter,sans-serif;font-size:12px;font-weight:600;background:rgba(240,85,74,.18);color:var(--rojo);border-radius:20px;padding:2px 9px;}
+.falt-toggle{background:transparent;border:1px solid rgba(240,85,74,.45);color:var(--text);border-radius:7px;padding:4px 10px;font-size:12px;cursor:pointer;}
+.falt-toggle:hover{border-color:var(--rojo);}
+.falt-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:6px;margin-top:8px;}
+.falt-row{display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--border-soft);border-radius:8px;padding:6px 10px;font-size:12.5px;}
+.falt-row .fr-name{font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.falt-row .fr-n{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--rojo);white-space:nowrap;}
+.falt-row .fr-dias{display:flex;gap:2px;}
+.falt-row .fr-dias i{display:block;width:7px;height:12px;border-radius:2px;background:rgba(63,185,80,.55);}
+.falt-row .fr-dias i.x{background:var(--rojo);}
+.falt-riesgos{margin-top:8px;font-size:12px;color:var(--muted);line-height:1.6;}
+.falt-riesgos b{color:var(--text);}
 
 
 
@@ -607,9 +620,13 @@ footer.note b{color:var(--muted);}
   </div>
 
   <div class="alert-banner hidden" id="alertBannerFaltantes">
-    <h2>⚠️ Rondines no realizados — últimos <span id="alertVentanaDias">7</span> días con datos</h2>
-    <div class="desc">Áreas y turnos que normalmente se recorren, pero que no tienen ningún rondín registrado ese día. Cada hueco es un periodo sin vigilancia comprobada — vea el riesgo específico en cada tarjeta.</div>
-    <div class="alert-list" id="alertListFaltantes"></div>
+    <div class="falt-head">
+      <h2>⚠️ Rondines no realizados <span class="falt-total" id="alertTotalFaltantes"></span></h2>
+      <button type="button" class="falt-toggle" id="btnToggleFaltantes">Ver riesgos ▾</button>
+    </div>
+    <div class="desc">Últimos <span id="alertVentanaDias">7</span> días con datos · áreas y turnos que normalmente se recorren pero sin ningún rondín registrado ese día.</div>
+    <div class="falt-list" id="alertListFaltantes"></div>
+    <div class="falt-riesgos" id="alertRiesgosFaltantes" style="display:none;"></div>
   </div>
 
   <div class="panel" id="panelReporteProgramado" style="margin-bottom:14px;">
@@ -1273,6 +1290,13 @@ function calcularCoberturaYHuecos(){
   return {pct, huecos, dias, combosEsperados};
 }
 
+document.addEventListener('click', function(e){
+  if(!e.target || e.target.id!=='btnToggleFaltantes') return;
+  const box = document.getElementById('alertRiesgosFaltantes');
+  const abrir = box.style.display==='none';
+  box.style.display = abrir ? 'block' : 'none';
+  e.target.textContent = abrir ? 'Ocultar riesgos ▴' : 'Ver riesgos ▾';
+});
 function renderAlertaFaltantes(){
   const {pct, huecos} = calcularCoberturaYHuecos();
   const banner = document.getElementById('alertBannerFaltantes');
@@ -1285,14 +1309,24 @@ function renderAlertaFaltantes(){
     return;
   }
   banner.classList.remove('hidden');
-  const MAX_MOSTRAR = 24;
-  lista.innerHTML = huecos.slice(0, MAX_MOSTRAR).map(h=>`
-    <div class="alert-item">
-      <div class="name">${h.area} · ${h.turno}</div>
-      <div class="loc">${fmtDateOnly(new Date(h.dia+'T00:00:00').getTime())}</div>
-      <div class="accion">${riesgoDeHueco(h.turno)}</div>
-    </div>
-  `).join('') + (huecos.length>MAX_MOSTRAR ? `<div class="alert-item" style="display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12.5px;">+${huecos.length-MAX_MOSTRAR} hueco(s) más en estos ${VENTANA_DIAS_ALERTA} días</div>` : '');
+  // agrupar por área + turno: una fila compacta por combinación, con un mini calendario de los días
+  const {dias} = calcularCoberturaYHuecos();
+  const grupos = {};
+  huecos.forEach(h=>{ const k=h.area+'||'+h.turno; (grupos[k]=grupos[k]||{area:h.area,turno:h.turno,dias:[]}).dias.push(h.dia); });
+  const lista2 = Object.values(grupos).sort((a,b)=> b.dias.length-a.dias.length || a.area.localeCompare(b.area));
+  document.getElementById('alertTotalFaltantes').textContent = huecos.length+' turno(s) sin rondín';
+  lista.innerHTML = lista2.map(g=>{
+    const fechas = g.dias.slice().sort().map(d=>fmtDateOnly(new Date(d+'T00:00:00').getTime())).join(', ');
+    const mini = dias.map(d=>`<i class="${g.dias.includes(d)?'x':''}" title="${fmtDateOnly(new Date(d+'T00:00:00').getTime())}${g.dias.includes(d)?' — sin rondín':' — con rondín'}"></i>`).join('');
+    return `<div class="falt-row" title="Sin rondín: ${fechas}\n\n${riesgoDeHueco(g.turno)}">
+      <span class="fr-name">${g.area} · ${g.turno}</span>
+      <span class="fr-dias">${mini}</span>
+      <span class="fr-n">${g.dias.length}/${dias.length}</span>
+    </div>`;
+  }).join('');
+  const turnos = Array.from(new Set(lista2.map(g=>g.turno)));
+  document.getElementById('alertRiesgosFaltantes').innerHTML = turnos.map(t=>`<div><b>${t}:</b> ${riesgoDeHueco(t)}</div>`).join('')
+    + '<div style="margin-top:4px;">Cada barrita es un día (el más reciente a la derecha): <span style="color:var(--rojo);">rojo</span> = sin rondín, verde = con rondín. Pase el cursor sobre una fila para ver las fechas.</div>';
 }
 
 // ---------- KPIs ----------
