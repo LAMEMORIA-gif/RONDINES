@@ -356,8 +356,26 @@ window.addEventListener('resize', function(){
   window._rrt = setTimeout(renderTodo, 180);
 });
 
+// ---------- unificación de nombres de ubicación ----------
+// Los guardias escriben la misma ubicación de muchas formas ("Campo Palomas RLM", "Rancho RLM(Palomas)",
+// "Palomas (RLM)"...). Aquí se agrupan bajo un solo nombre para que conteos, gráficas, tiempos,
+// recorridos y novedades se sumen juntos. No se borra nada: el nombre original queda en r.areaOriginal.
+// Para unificar otra ubicación, agregue una línea: {nombre:'Nombre oficial', patrones:['texto que aparezca']}.
+const UBICACIONES_UNIFICADAS = [
+  {nombre:'Campo Palomas', patrones:['palomas']},
+];
+function normTxtArea(t){ return String(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim(); }
+function normalizarArea(area){
+  const n = normTxtArea(area);
+  for(const u of UBICACIONES_UNIFICADAS){ if(u.patrones.some(p=>n.includes(normTxtArea(p)))) return u.nombre; }
+  return String(area||'').trim();
+}
+function unificarAreas(lista){
+  (lista||[]).forEach(r=>{ const n = normalizarArea(r.area); if(n!==r.area){ if(!r.areaOriginal) r.areaOriginal = r.area; r.area = n; } });
+  return lista;
+}
 async function cargarTodo(){
-  ALL_RONDINES = await leerTodo('rondines_panel_db','rondines');
+  ALL_RONDINES = unificarAreas(await leerTodo('rondines_panel_db','rondines'));
   ALL_ACCESOS = await leerTodo('control_acceso_panel_db','accesos');
   renderTodo();
 }

@@ -777,13 +777,33 @@ function generarQRDataURL(texto, cellSize){
 }
 const QR_PREFIX = 'RONDIN_CHECKPOINT::';
 
+// ---------- unificación de nombres de ubicación ----------
+// Los guardias escriben la misma ubicación de muchas formas ("Campo Palomas RLM", "Rancho RLM(Palomas)",
+// "Palomas (RLM)"...). Aquí se agrupan bajo un solo nombre para que conteos, gráficas, tiempos,
+// recorridos y novedades se sumen juntos. No se borra nada: el nombre original queda en r.areaOriginal.
+// Para unificar otra ubicación, agregue una línea: {nombre:'Nombre oficial', patrones:['texto que aparezca']}.
+const UBICACIONES_UNIFICADAS = [
+  {nombre:'Campo Palomas', patrones:['palomas']},
+];
+function normTxtArea(t){ return String(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim(); }
+function normalizarArea(area){
+  const n = normTxtArea(area);
+  for(const u of UBICACIONES_UNIFICADAS){ if(u.patrones.some(p=>n.includes(normTxtArea(p)))) return u.nombre; }
+  return String(area||'').trim();
+}
+function unificarAreas(lista){
+  (lista||[]).forEach(r=>{ const n = normalizarArea(r.area); if(n!==r.area){ if(!r.areaOriginal) r.areaOriginal = r.area; r.area = n; } });
+  return lista;
+}
+
 // ---------- geocerca por campo (verifica que el rondín se haya hecho físicamente en el sitio) ----------
 const GEOCERCA_KEY = 'rondines_geocercas_v1';
 function loadGeocercas(){ try{ const raw = localStorage.getItem(GEOCERCA_KEY); return raw?JSON.parse(raw):{}; }catch(e){ return {}; } }
 function saveGeocercas(obj){ try{ localStorage.setItem(GEOCERCA_KEY, JSON.stringify(obj)); return true; }catch(e){ return false; } }
 function getGeocercaDeArea(area){
   const todo = loadGeocercas();
-  const key = Object.keys(todo).find(k=>k.trim().toLowerCase()===String(area||'').trim().toLowerCase());
+  const key = Object.keys(todo).find(k=>k.trim().toLowerCase()===String(area||'').trim().toLowerCase())
+           || Object.keys(todo).find(k=>normalizarArea(k)===normalizarArea(area)); // geocercas guardadas con un nombre anterior
   return key ? todo[key] : null;
 }
 function pctDentroDeGeocerca(rondin){
@@ -1679,7 +1699,7 @@ function abrirDetalle(id){
   const pctGeo = pctDentroDeGeocerca(r);
   const geoEstado = estadoGeocerca(r);
 
-  document.getElementById('detTitulo').textContent = r.guardia+' · '+r.area;
+  document.getElementById('detTitulo').textContent = r.guardia+' · '+r.area+(r.areaOriginal?' (capturado como "'+r.areaOriginal+'")':'');
   document.getElementById('detSub').textContent = (r.turno?r.turno+' · ':'')+fmtDateTime(r.inicio)+(r.fin?' a '+fmtDateTime(r.fin):' (sin finalizar)');
   document.getElementById('detKpis').innerHTML = `
     <div class="kpi"><div class="kpi-accentbar"></div><div class="label">Duración</div><div class="value">${dur!=null?dur+' min':'—'}</div></div>
@@ -1793,7 +1813,7 @@ function renderAll(){
   safe(()=>revisarReporteProgramado(), 'reporte programado');
 }
 async function cargarYRenderizar(){
-  ALL_RONDINES = await dbGetAll();
+  ALL_RONDINES = unificarAreas(await dbGetAll());
   refreshFilterLists();
   renderAll();
   safe(()=>renderAreaChips(), 'chips de áreas configuradas');
