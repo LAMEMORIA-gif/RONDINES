@@ -374,8 +374,41 @@ function unificarAreas(lista){
   (lista||[]).forEach(r=>{ const n = normalizarArea(r.area); if(n!==r.area){ if(!r.areaOriginal) r.areaOriginal = r.area; r.area = n; } });
   return lista;
 }
+
+// ---------- unificación automática de nombres de guardia ----------
+// Reconoce como la misma persona: mayúsculas/minúsculas, acentos y espacios distintos
+// ("Edwin Muñiz collazo" = "Edwin Muñiz Collazo"), y nombres incompletos
+// ("Abisai Ayala" = "Abisai Ayala Contreras") cuando el nombre corto coincide con UN solo nombre completo.
+// Si el nombre corto puede ser de dos personas distintas (ej. "Juan Pérez" con "Juan Pérez López" y
+// "Juan Pérez Gómez"), NO se une, para no mezclar guardias. Se aplica solo a cualquier guardia nuevo.
+// El nombre tal como se capturó queda en r.guardiaOriginal.
+function tokensNombre(t){ return normTxtArea(t).split(' ').filter(Boolean); }
+function esSubsecuencia(corto, largo){ if(corto[0]!==largo[0]) return false; let j=0; for(const w of largo){ if(w===corto[j]) j++; if(j===corto.length) return true; } return false; }
+function nombrePropio(t){ return String(t||'').trim().replace(/\s+/g,' ').toLowerCase().split(' ').map(w=>w ? w.charAt(0).toUpperCase()+w.slice(1) : w).join(' '); }
+function unificarGuardias(lista){
+  const variantes = new Map(); // nombre normalizado -> {tokens, originales:{texto:conteo}}
+  (lista||[]).forEach(r=>{
+    const orig = r.guardiaOriginal || r.guardia; const k = tokensNombre(orig).join(' '); if(!k) return;
+    const v = variantes.get(k) || {tokens:k.split(' '), originales:{}}; v.originales[orig.trim()] = (v.originales[orig.trim()]||0)+1; variantes.set(k, v);
+  });
+  const claves = [...variantes.keys()].sort((a,b)=>variantes.get(b).tokens.length-variantes.get(a).tokens.length);
+  const raiz = new Map();
+  claves.forEach(k=>{
+    const t = variantes.get(k).tokens;
+    const candidatos = new Set(claves.filter(m=>variantes.get(m).tokens.length>t.length && t.length>=2 && esSubsecuencia(t, variantes.get(m).tokens)).map(m=>raiz.get(m)||m));
+    raiz.set(k, candidatos.size===1 ? [...candidatos][0] : k);
+  });
+  const mostrar = new Map();
+  raiz.forEach(r=>{ if(!mostrar.has(r)){ const o = variantes.get(r).originales; const acentos = x=>(x.match(/[áéíóúñü]/gi)||[]).length; const mejor = Object.keys(o).sort((a,b)=>o[b]-o[a] || acentos(b)-acentos(a))[0]; mostrar.set(r, nombrePropio(mejor)); } });
+  (lista||[]).forEach(r=>{
+    const orig = r.guardiaOriginal || r.guardia; const k = tokensNombre(orig).join(' '); if(!k) return;
+    const nuevo = mostrar.get(raiz.get(k));
+    if(nuevo && nuevo!==r.guardia){ if(!r.guardiaOriginal) r.guardiaOriginal = r.guardia; r.guardia = nuevo; }
+  });
+  return lista;
+}
 async function cargarTodo(){
-  ALL_RONDINES = unificarAreas(await leerTodo('rondines_panel_db','rondines'));
+  ALL_RONDINES = unificarGuardias(unificarAreas(await leerTodo('rondines_panel_db','rondines')));
   ALL_ACCESOS = await leerTodo('control_acceso_panel_db','accesos');
   renderTodo();
 }

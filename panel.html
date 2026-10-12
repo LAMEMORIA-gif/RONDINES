@@ -796,6 +796,39 @@ function unificarAreas(lista){
   return lista;
 }
 
+// ---------- unificación automática de nombres de guardia ----------
+// Reconoce como la misma persona: mayúsculas/minúsculas, acentos y espacios distintos
+// ("Edwin Muñiz collazo" = "Edwin Muñiz Collazo"), y nombres incompletos
+// ("Abisai Ayala" = "Abisai Ayala Contreras") cuando el nombre corto coincide con UN solo nombre completo.
+// Si el nombre corto puede ser de dos personas distintas (ej. "Juan Pérez" con "Juan Pérez López" y
+// "Juan Pérez Gómez"), NO se une, para no mezclar guardias. Se aplica solo a cualquier guardia nuevo.
+// El nombre tal como se capturó queda en r.guardiaOriginal.
+function tokensNombre(t){ return normTxtArea(t).split(' ').filter(Boolean); }
+function esSubsecuencia(corto, largo){ if(corto[0]!==largo[0]) return false; let j=0; for(const w of largo){ if(w===corto[j]) j++; if(j===corto.length) return true; } return false; }
+function nombrePropio(t){ return String(t||'').trim().replace(/\s+/g,' ').toLowerCase().split(' ').map(w=>w ? w.charAt(0).toUpperCase()+w.slice(1) : w).join(' '); }
+function unificarGuardias(lista){
+  const variantes = new Map(); // nombre normalizado -> {tokens, originales:{texto:conteo}}
+  (lista||[]).forEach(r=>{
+    const orig = r.guardiaOriginal || r.guardia; const k = tokensNombre(orig).join(' '); if(!k) return;
+    const v = variantes.get(k) || {tokens:k.split(' '), originales:{}}; v.originales[orig.trim()] = (v.originales[orig.trim()]||0)+1; variantes.set(k, v);
+  });
+  const claves = [...variantes.keys()].sort((a,b)=>variantes.get(b).tokens.length-variantes.get(a).tokens.length);
+  const raiz = new Map();
+  claves.forEach(k=>{
+    const t = variantes.get(k).tokens;
+    const candidatos = new Set(claves.filter(m=>variantes.get(m).tokens.length>t.length && t.length>=2 && esSubsecuencia(t, variantes.get(m).tokens)).map(m=>raiz.get(m)||m));
+    raiz.set(k, candidatos.size===1 ? [...candidatos][0] : k);
+  });
+  const mostrar = new Map();
+  raiz.forEach(r=>{ if(!mostrar.has(r)){ const o = variantes.get(r).originales; const acentos = x=>(x.match(/[áéíóúñü]/gi)||[]).length; const mejor = Object.keys(o).sort((a,b)=>o[b]-o[a] || acentos(b)-acentos(a))[0]; mostrar.set(r, nombrePropio(mejor)); } });
+  (lista||[]).forEach(r=>{
+    const orig = r.guardiaOriginal || r.guardia; const k = tokensNombre(orig).join(' '); if(!k) return;
+    const nuevo = mostrar.get(raiz.get(k));
+    if(nuevo && nuevo!==r.guardia){ if(!r.guardiaOriginal) r.guardiaOriginal = r.guardia; r.guardia = nuevo; }
+  });
+  return lista;
+}
+
 // ---------- geocerca por campo (verifica que el rondín se haya hecho físicamente en el sitio) ----------
 const GEOCERCA_KEY = 'rondines_geocercas_v1';
 function loadGeocercas(){ try{ const raw = localStorage.getItem(GEOCERCA_KEY); return raw?JSON.parse(raw):{}; }catch(e){ return {}; } }
@@ -1699,7 +1732,9 @@ function abrirDetalle(id){
   const pctGeo = pctDentroDeGeocerca(r);
   const geoEstado = estadoGeocerca(r);
 
-  document.getElementById('detTitulo').textContent = r.guardia+' · '+r.area+(r.areaOriginal?' (capturado como "'+r.areaOriginal+'")':'');
+  document.getElementById('detTitulo').textContent = r.guardia+' · '+r.area;
+  const capt=[r.guardiaOriginal&&r.guardiaOriginal!==r.guardia?'guardia "'+r.guardiaOriginal+'"':'', r.areaOriginal?'área "'+r.areaOriginal+'"':''].filter(Boolean);
+  if(capt.length) document.getElementById('detTitulo').textContent += ' (capturado como '+capt.join(', ')+')';
   document.getElementById('detSub').textContent = (r.turno?r.turno+' · ':'')+fmtDateTime(r.inicio)+(r.fin?' a '+fmtDateTime(r.fin):' (sin finalizar)');
   document.getElementById('detKpis').innerHTML = `
     <div class="kpi"><div class="kpi-accentbar"></div><div class="label">Duración</div><div class="value">${dur!=null?dur+' min':'—'}</div></div>
@@ -1813,7 +1848,7 @@ function renderAll(){
   safe(()=>revisarReporteProgramado(), 'reporte programado');
 }
 async function cargarYRenderizar(){
-  ALL_RONDINES = unificarAreas(await dbGetAll());
+  ALL_RONDINES = unificarGuardias(unificarAreas(await dbGetAll()));
   refreshFilterLists();
   renderAll();
   safe(()=>renderAreaChips(), 'chips de áreas configuradas');
