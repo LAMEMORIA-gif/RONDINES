@@ -1896,12 +1896,22 @@ function drawRouteCanvas(rondin){
 document.getElementById('btnExportarRondin').addEventListener('click', function(){
   exportRondinJSON(rondinActivo);
 });
+function nombreArchivoRondin(r){
+  const p2 = n => String(n).padStart(2,'0');
+  const limpio = t => String(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Za-z0-9]+/g,'_').replace(/^_|_$/g,'');
+  const d = new Date(r.inicio || Date.now());
+  const fecha = d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate());
+  const hora = p2(d.getHours())+p2(d.getMinutes());
+  const codigo = limpio(String(r.id||'')).slice(-5) || Math.random().toString(36).slice(2,7);
+  return 'rondin_'+(limpio(r.area)||'SIN_AREA').toUpperCase()+'_'+fecha+'_'+hora+'_'+(limpio(r.guardia)||'guardia')+'_'+codigo+'.json';
+}
 function exportRondinJSON(rondin){
   const blob = new Blob([JSON.stringify(rondin, null, 2)], {type:'application/json'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  const fecha = new Date(rondin.inicio).toISOString().slice(0,10);
-  a.href = url; a.download = 'rondin_'+rondin.guardia.replace(/\\s+/g,'_')+'_'+fecha+'.json';
+  // Nombre único: área, fecha y hora LOCAL de inicio del rondín, guardia y un código del rondín.
+  // Así dos rondines del mismo guardia el mismo día (o de distintas áreas) nunca se reemplazan al guardarlos en una carpeta.
+  a.href = url; a.download = nombreArchivoRondin(rondin);
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
   rondin.exportado = true;
