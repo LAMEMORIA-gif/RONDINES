@@ -3,7 +3,7 @@
 // v5: ahora revisa primero internet (network-first) y sólo usa la copia guardada
 // si no hay conexión — así ya no hace falta borrar datos del sitio cada vez que se actualiza la app.
 // v6: el archivo de cada rondín se nombra con área, fecha y hora local de inicio, guardia y código (ya no se reemplazan en la carpeta).
-const CACHE_NAME = 'rondines-cache-v6';
+const CACHE_NAME = 'rondines-cache-v7';
 const ASSETS = [
   './',
   './index.html',
