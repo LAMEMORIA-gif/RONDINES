@@ -2012,10 +2012,62 @@ document.getElementById('btnQuitarGeocerca').addEventListener('click', function(
 const panelGeocerca = document.getElementById('panelGeocerca');
 document.getElementById('panelGeocercaHead').addEventListener('click', ()=>{ panelGeocerca.classList.toggle('open'); });
 
+// ---------- QR general del campo + compartir imágenes ----------
+function qrDataURLNivel(texto, cell, nivel){ const qr = qrcode(0, nivel||'M'); qr.addData(texto); qr.make(); return qr.createDataURL(cell||4, (cell||4)*2); }
+function dataURLaImg(src){ return new Promise((ok,ko)=>{ const im=new Image(); im.onload=()=>ok(im); im.onerror=ko; im.src=src; }); }
+// Tarjeta PNG lista para imprimir o mandar: QR grande + título + subtítulo
+async function tarjetaQR(srcQR, titulo, subtitulo){
+  const im = await dataURLaImg(srcQR); const W=700, H=860, c=document.createElement('canvas'); c.width=W; c.height=H; const x=c.getContext('2d');
+  x.fillStyle='#fff'; x.fillRect(0,0,W,H); x.imageSmoothingEnabled=false; x.drawImage(im,60,40,580,580);
+  x.fillStyle='#111'; x.textAlign='center'; x.font='bold 40px system-ui,sans-serif';
+  const partir=(t,max)=>{ const w=String(t).split(' '),l=[]; let a=''; w.forEach(p=>{ if(x.measureText((a+' '+p).trim()).width>max&&a){ l.push(a); a=p; } else a=(a+' '+p).trim(); }); if(a) l.push(a); return l.slice(0,2); };
+  partir(titulo,640).forEach((t,i)=>x.fillText(t,W/2,690+i*46));
+  x.font='26px system-ui,sans-serif'; x.fillStyle='#555'; x.fillText(String(subtitulo).slice(0,48),W/2,H-40);
+  return new Promise(r=>c.toBlob(r,'image/png'));
+}
+const limpioArch = t=>String(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Za-z0-9]+/g,'_').replace(/^_|_$/g,'');
+async function compartirArchivos(files, texto, msgEl){
+  if(navigator.canShare && navigator.canShare({files})){
+    try{ await navigator.share({files, text:texto}); msgEl.textContent='Listo: elija WhatsApp, Drive, correo o "Guardar" para pasarlos a su laptop.'; msgEl.className='form-msg ok'; return; }
+    catch(e){ if(e && e.name==='AbortError') return; }
+  }
+  // sin la opción de compartir (computadora): se descargan uno por uno
+  for(const f of files){ const a=document.createElement('a'); a.href=URL.createObjectURL(f); a.download=f.name; document.body.appendChild(a); a.click(); a.remove(); await new Promise(r=>setTimeout(r,350)); }
+  msgEl.textContent='Se descargaron '+files.length+' imagen(es). Mándelas por WhatsApp Web o correo.'; msgEl.className='form-msg ok';
+}
+function htmlQRGeneral(area, n){
+  let src='', err='';
+  try{ src = qrDataURLNivel(APP_GUARDIA_URL+'#puntos='+codificarPuntosB64({[area]:loadPuntosPorArea()[area]||[]}), 4, 'L'); }
+  catch(e){ err='Este campo tiene demasiados puntos para un solo QR general. Use "Enviar por WhatsApp" (más abajo) o comparta las imágenes de los puntos.'; }
+  return `<div class="punto-qr-card" style="grid-column:1/-1;display:flex;gap:16px;align-items:center;flex-wrap:wrap;text-align:left;border-color:var(--accent);">
+    ${src?`<img src="${src}" alt="QR general de ${area}" style="max-width:190px;">`:''}
+    <div style="flex:1;min-width:200px;">
+      <div style="font-weight:700;font-size:15px;">🔳 QR general de "${area}"</div>
+      <div style="color:var(--muted);font-size:12px;margin:4px 0 10px;">${err||'El guardia lo escanea con la cámara normal de su celular, toca el enlace y se cargan solos los '+n+' punto(s) de este campo en su app de rondines.'}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        ${src?'<button type="button" class="btn-primary" id="btnCompartirQRGeneral">📤 Compartir QR general</button>':''}
+        <button type="button" class="btn-secondary" id="btnCompartirQRsPuntos">📤 Compartir las ${n} imágenes QR de los puntos</button>
+      </div>
+    </div></div>`;
+}
+document.getElementById('listaPuntosAdmin').addEventListener('click', async function(e){
+  const msgEl = document.getElementById('puntosAdminMsg'), area = areaAdminSeleccionada;
+  if(e.target.closest('#btnCompartirQRGeneral')){
+    const pts = loadPuntosPorArea()[area]||[]; const url = APP_GUARDIA_URL+'#puntos='+codificarPuntosB64({[area]:pts});
+    const blob = await tarjetaQR(qrDataURLNivel(url, 6, 'L'), 'Puntos de rondín · '+area, 'Escanee con la cámara y toque el enlace');
+    await compartirArchivos([new File([blob], 'QR_general_'+limpioArch(area)+'.png', {type:'image/png'})], 'Puntos de control de rondín — '+area+' ('+pts.length+' puntos). Toque este enlace para cargarlos en su app:\n'+url, msgEl);
+  }
+  if(e.target.closest('#btnCompartirQRsPuntos')){
+    const pts = loadPuntosPorArea()[area]||[]; if(!pts.length) return;
+    msgEl.textContent='Preparando '+pts.length+' imagen(es)…'; msgEl.className='form-msg ok';
+    const files=[]; for(const p of pts){ const b = await tarjetaQR(generarQRDataURL(QR_PREFIX+area+'::'+p, 8), p, area); files.push(new File([b], 'QR_'+limpioArch(area)+'_'+limpioArch(p)+'.png', {type:'image/png'})); }
+    await compartirArchivos(files, 'Códigos QR de los puntos de control — '+area, msgEl);
+  }
+});
 function renderListaPuntosAdmin(){
   const todo = loadPuntosPorArea();
   const puntos = todo[areaAdminSeleccionada] || [];
-  document.getElementById('listaPuntosAdmin').innerHTML = puntos.map((p,i)=>{
+  document.getElementById('listaPuntosAdmin').innerHTML = (puntos.length ? htmlQRGeneral(areaAdminSeleccionada, puntos.length) : '') + puntos.map((p,i)=>{
     let qrSrc = '';
     try{ qrSrc = generarQRDataURL(QR_PREFIX+areaAdminSeleccionada+'::'+p, 5); } catch(e){ console.error(e); }
     return `
@@ -2156,7 +2208,7 @@ function mostrarCajaEnlace(d, conQR){
   let qrHtml = '';
   if(conQR){
     try{
-      const src = generarQRDataURL(d.url, 4);
+      const src = qrDataURLNivel(d.url, 4, 'L');
       qrHtml = '<img src="'+src+'" alt="QR de configuración" style="max-width:280px;width:100%;background:#fff;padding:8px;border-radius:8px;">'
         + '<div style="font-size:12px;color:var(--muted);margin:6px 0 10px;">El guardia lo escanea con la <b>cámara normal</b> de su celular y toca el enlace que aparece — '+d.etiqueta+', '+d.total+' puntos.</div>';
     }catch(e){
