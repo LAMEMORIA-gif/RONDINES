@@ -540,7 +540,7 @@ footer.note b{color:var(--muted);}
       </div>
       <div class="field-inline">
         <label class="req">Área / Campo</label>
-        <input type="text" id="inArea" placeholder="Ej. Campo Palomas" list="dlAreasPuntos" autocomplete="off"><datalist id="dlAreasPuntos"></datalist>
+        <select id="inArea"><option value="">— Seleccionar campo —</option></select>
       </div>
       <div class="field-inline" style="margin-bottom:0;">
         <label class="req">Turno</label>
@@ -815,6 +815,45 @@ footer.note b{color:var(--muted);}
 
 </script>
 <script>
+/* Catálogo oficial de campos/ubicaciones de Rancho Agrícola La Memoria y reconocimiento de abreviaturas.
+   Mismo código en el ERP y en las apps de guardia (RONDINES, CONTROL-ACCESO, INCIDENCIAS, OPERATIVO).
+   Alias: cada texto se compara sin acentos ni mayúsculas; "a+b" exige que aparezcan ambas palabras.
+   El ORDEN importa: lo más específico va primero (p. ej. Galeras Palomas antes que Campo Palomas). */
+(function (g) {
+  'use strict';
+  // Lista en el orden en que se muestra; "p" es la prioridad al reconocer (menor = se revisa primero).
+  const LISTA = [
+    { nombre: 'Campo Palomas', p: 90, alias: ['palomas', 'rlm', 'rancho la memoria', 'la memoria', 'campo rlm'] },
+    { nombre: 'Galeras Palomas', p: 2, alias: ['galeras+palomas', 'galera+palomas', 'galeras+rlm', 'galera+rlm', 'galeras+rancho'] },
+    { nombre: 'Almacén General', p: 4, alias: ['almacen general', 'almacen gral', 'alm general', 'alm gral', 'almacen', 'almacenes', 'ag', 'a g'] },
+    { nombre: 'Empaque', p: 80, alias: ['empaque', 'empacadora'] },
+    { nombre: 'Galeras Empaque', p: 3, alias: ['galeras+empaque', 'galera+empaque', 'empaque+galeras', 'empaque+galera', 'galeras', 'galera'] },
+    { nombre: 'Campo Santa Fe', p: 70, alias: ['santa fe', 'santafe', 'sta fe'] },
+    { nombre: 'Campo El Milagro Uno', p: 7, alias: ['milagro uno', 'milagro 1', 'milagro i', 'milagro1', 'milagro'] },
+    { nombre: 'Campo El Milagro Dos', p: 6, alias: ['milagro dos', 'milagro 2', 'milagro ii', 'milagro2'] },
+    { nombre: 'Campo El Milagro Tres', p: 5, alias: ['milagro tres', 'milagro 3', 'milagro iii', 'milagro3'] },
+    { nombre: 'Almacén El Milagro Uno', p: 1, alias: ['almacen+milagro', 'alm+milagro', 'bodega+milagro'] }
+  ];
+
+  const norm = t => String(t == null ? '' : t).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  function coincide(n, alias) {
+    return String(alias).split('+').every(p => n.includes(' ' + norm(p) + ' '));
+  }
+  // Devuelve el nombre oficial o '' si no se reconoce. 'lista' permite usar una lista personalizada (misma forma).
+  function oficial(txt, lista) {
+    const n = ' ' + norm(txt) + ' ';
+    if (n.trim() === '') return '';
+    const orden = (lista || LISTA).slice().sort((a, b) => (a.p == null ? 50 : a.p) - (b.p == null ? 50 : b.p));
+    for (const c of orden) {
+      if (coincide(n, c.nombre)) return c.nombre;
+      for (const a of (c.alias || [])) if (coincide(n, a)) return c.nombre;
+    }
+    return '';
+  }
+  g.CAMPOS_LM = { lista: LISTA, nombres: LISTA.map(c => c.nombre), oficial, norm };
+})(typeof window !== 'undefined' ? window : globalThis);
+</script>
+<script>
 
 const COLORS = { VERDE:'#3fb950', AMARILLO:'#e3b341', ROJO:'#f0554a', NARANJA:'#e08a4b', accent:'#4f8fd6', muted:'#8b95a6', text:'#e8ecf1' };
 
@@ -949,11 +988,12 @@ function loadPuntosPorArea(){
 function savePuntosPorArea(obj){ try{ localStorage.setItem(PUNTOS_KEY, JSON.stringify(obj)); return true; }catch(e){ return false; } }
 // La misma ubicación puede estar escrita de varias formas ("Campo Palomas RLM", "Palomas (RLM)", "Rancho Palomas"...).
 // claveArea() las reduce a una sola clave para que los puntos y los QR coincidan aunque el nombre no sea idéntico.
-const UBICACIONES_UNIFICADAS = [ {nombre:'Campo Palomas', patrones:['palomas']} ];
 function txtNorm(t){ return String(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim(); }
+// Clave única de una ubicación: si es un campo del catálogo oficial (CAMPOS_LM) todas sus variantes dan la misma clave.
 function claveArea(area){
+  const o = CAMPOS_LM.oficial(area);
+  if(o) return txtNorm(o);
   const n = txtNorm(area);
-  for(const u of UBICACIONES_UNIFICADAS){ if(u.patrones.some(p=>n.includes(txtNorm(p)))) return txtNorm(u.nombre).replace(/\b(campo|rancho|rlm)\b/g,'').replace(/\s+/g,' ').trim(); }
   return n.replace(/\b(campo|rancho|rlm)\b/g,'').replace(/\s+/g,' ').trim() || n;
 }
 function getPuntosDeArea(area){
@@ -974,6 +1014,8 @@ function pintarAreasConocidas(){
   const dl = document.getElementById('dlAreasPuntos'); if(!dl) return;
   dl.innerHTML = Object.keys(loadPuntosPorArea()).sort().map(a=>'<option value="'+a.replace(/"/g,'&quot;')+'">').join('');
 }
+(function(){ const s=document.getElementById('inArea'); CAMPOS_LM.nombres.forEach(n=>{ const o=document.createElement('option'); o.textContent=n; o.value=n; s.appendChild(o); }); })();
+function fijarArea(txt){ const s=document.getElementById('inArea'), o=CAMPOS_LM.oficial(txt); if(o) s.value=o; }
 function areaActualEnPanel(){ return document.getElementById('inArea').value.trim(); }
 
 function renderPuntosList(){
@@ -1257,7 +1299,7 @@ function mostrarResultadoEnlace(r, err){
     msgEl.textContent = '✅ Se cargaron '+r.totalPuntos+' punto(s) de control ('+r.areas.join(', ')+'). Ya puede iniciar su rondín.';
     msgEl.className = 'form-msg ok';
     const inArea = document.getElementById('inArea');
-    if(inArea && !inArea.value.trim() && r.areas.length===1){ inArea.value = r.areas[0]; renderPuntosList(); }
+    if(inArea && !inArea.value.trim() && r.areas.length===1){ fijarArea(r.areas[0]); renderPuntosList(); }
   }
   if(panel) setTimeout(()=>panel.scrollIntoView({behavior:'smooth', block:'start'}), 300);
 }
@@ -1498,7 +1540,7 @@ document.getElementById('filePuntosQR').addEventListener('change', async functio
   }
   const lista = Object.keys(areas);
   const inArea = document.getElementById('inArea');
-  if(lista.length===1 && !inArea.value.trim()) inArea.value = lista[0];
+  if(lista.length===1 && !inArea.value.trim()) fijarArea(lista[0]);
   renderPuntosList();
   msgEl.textContent = (nuevos?'✅ '+nuevos+' punto(s) cargado(s)':'Sin puntos nuevos')+(lista.length?' de '+lista.join(', '):'')+(repetidos?' · '+repetidos+' ya estaban':'')+(noQR?' · '+noQR+' imagen(es) sin QR de rondín':'')+(sinArea?' · '+sinArea+' QR sin área: escriba el Área arriba y vuelva a cargarlos':'')+'.';
   msgEl.className = nuevos||repetidos ? 'form-msg ok' : 'form-msg err';
